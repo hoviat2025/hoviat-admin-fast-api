@@ -1,0 +1,27 @@
+# --- Security (CRITICAL) ---
+.env
+.env.*
+secrets.json
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Virtual Environment ---
+venv/
+env/
+.venv/
+
+# --- IDE Settings (Optional, keeps repo clean) ---
+.vscode/
+.idea/
+
+# --- OS Junk ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Logs ---
+*.log
