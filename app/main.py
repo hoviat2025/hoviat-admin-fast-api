@@ -1,15 +1,20 @@
 from fastapi import FastAPI
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers  # <--- NEW IMPORT
 
 # --- IMPORTS ---
 # 1. Admin Router
 from app.modules.admin.router import router as admin_router
-# 2. Eurobot Router (Renamed from bot)
+# 2. Eurobot Router
 from app.modules.eurobot.router import router as eurobot_router
 # 3. Shared Router
 from app.shared.routers.user_lookup import router as shared_user_router
 
 app = FastAPI(title="Unified API")
+
+# --- REGISTER EXCEPTION HANDLERS ---
+# This activates the global wrapper for errors (404, 409, 422, 500)
+register_exception_handlers(app)
 
 # --- APP MODE LOGIC ---
 mode = settings.APP_MODE
@@ -19,8 +24,6 @@ print(f"🚀 Starting App in Mode: {mode}")
 # --- MOUNT ROUTERS ---
 
 # 1. Shared Router
-# This is mounted globally because it contains endpoints used by multiple systems
-# logic is verified inside the route itself (Admin OR Bot).
 app.include_router(
     shared_user_router, 
     prefix="/api/shared", 
