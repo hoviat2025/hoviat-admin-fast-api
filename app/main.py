@@ -1,19 +1,18 @@
 from fastapi import FastAPI
 from app.core.config import settings
-from app.core.exceptions import register_exception_handlers  # <--- NEW IMPORT
+from app.core.exceptions import register_exception_handlers
 
 # --- IMPORTS ---
 # 1. Admin Router
 from app.modules.admin.router import router as admin_router
 # 2. Eurobot Router
 from app.modules.eurobot.router import router as eurobot_router
-# 3. Shared Router
-from app.shared.routers.user_lookup import router as shared_user_router
+
+# REMOVED: Shared Router import (We rely on Shared Repositories now)
 
 app = FastAPI(title="Unified API")
 
 # --- REGISTER EXCEPTION HANDLERS ---
-# This activates the global wrapper for errors (404, 409, 422, 500)
 register_exception_handlers(app)
 
 # --- APP MODE LOGIC ---
@@ -23,24 +22,19 @@ print(f"🚀 Starting App in Mode: {mode}")
 
 # --- MOUNT ROUTERS ---
 
-# 1. Shared Router
-app.include_router(
-    shared_user_router, 
-    prefix="/api/shared", 
-    tags=["Shared Lookup"]
-)
-
-# 2. Admin Module
+# 1. Admin Module
 if mode == "admin" or mode == "all":
     app.include_router(admin_router, prefix="/api/admin")
 
-# 3. Eurobot Module
+# 2. Eurobot Module
 if mode == "eurobot" or mode == "all":
     app.include_router(
         eurobot_router, 
-        prefix="/api/eurobot", 
+        prefix="/webhook/hoviat/v1/eurobot", 
         tags=["Eurobot Module"]
     )
+
+# REMOVED: Shared Router Mount
 
 @app.get("/health")
 def health_check():
