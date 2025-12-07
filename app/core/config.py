@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_BASE_URL: str
 
+    # R2 / S3 Configuration
+    R2_ENDPOINT_URL: str
+    R2_ACCESS_KEY_ID: str
+    R2_SECRET_ACCESS_KEY: str
+    R2_BUCKET_NAME: str
+    
     model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings()

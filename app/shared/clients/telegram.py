@@ -77,3 +77,40 @@ class TelegramClient:
                     status_code=0,
                     error_message=str(exc)
                 )
+    
+    # ... existing init and send_request ...
+
+    async def get_file_path(self, file_id: str) -> Optional[str]:
+        """
+        Exchanges a file_id for a remote file_path using the getFile endpoint.
+        """
+        payload = {"file_id": file_id}
+        # Reuse your existing robust logic!
+        response = await self.send_request("getFile", payload, retry_on_429=True)
+        
+        if response.success:
+            return response.data.get("result", {}).get("file_path")
+        return None
+
+    async def download_file(self, file_path: str) -> Optional[bytes]:
+        """
+        Downloads the raw binary content of a file from Telegram.
+        URL Format: https://api.telegram.org/file/bot<token>/<file_path>
+        """
+        # Note the extra '/file/' in the URL
+        # If your base_url is "https://api.telegram.org", we strip it to rebuild properly
+        # or just construct it manually:
+        base = self.base_url.replace("/bot", "") # quick cleanup if needed, but standard is:
+        file_url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(file_url, timeout=30.0)
+                if resp.status_code == 200:
+                    return resp.content # Returns raw bytes
+                else:
+                    logger.error(f"Failed to download file: {resp.status_code}")
+                    return None
+            except Exception as e:
+                logger.error(f"Exception downloading file: {e}")
+                return None
