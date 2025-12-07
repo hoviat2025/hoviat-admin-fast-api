@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     BOT_API_TOKEN: str
     # ADMIN_API_TOKEN is removed! We don't use static tokens for admins anymore.
 
+    # Telegram Bot Config
+    TELEGRAM_BOT_TOKEN: str
+    TELEGRAM_BASE_URL: str
+
     model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings()
