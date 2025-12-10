@@ -76,7 +76,7 @@ class StorageClient:
         if success:
             # NOTE: R2_ENDPOINT_URL is usually for API calls. 
             # If you have a Custom Domain (e.g. static.myapp.com), replace the URL base below.
-            return f"{settings.R2_ENDPOINT_URL}/{self.bucket}/{file_name}"
+            return f"https://pub-4036d35baed54ee7a9504072ea49740f.r2.dev/{file_name}"
         
         return None
 

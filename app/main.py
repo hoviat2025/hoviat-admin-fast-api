@@ -7,9 +7,7 @@ from app.core.exceptions import register_exception_handlers
 from app.modules.admin.router import router as admin_router
 from app.modules.eurobot.router import router as eurobot_router
 
-# Import the Singleton Client
-from app.shared.clients.telegram import telegram_client
-# Assuming you have a storage client set up similarly (optional but recommended)
+from app.shared.clients.telegram import telegram_system
 from app.shared.clients.storage import storage_client
 
 # --- LIFESPAN MANAGER ---
@@ -17,14 +15,14 @@ from app.shared.clients.storage import storage_client
 async def lifespan(app: FastAPI):
     # 1. Startup: Open connections
     print("🚀 Starting up... Initializing Clients")
-    await telegram_client.start()
+    await telegram_system.start()
     storage_client.start() 
 
     yield # Application runs here
     
     # 2. Shutdown: Close connections
     print("🛑 Shutting down... Closing Clients")
-    await telegram_client.stop()
+    await telegram_system.stop()
     storage_client.stop()
 
 # --- APP SETUP ---

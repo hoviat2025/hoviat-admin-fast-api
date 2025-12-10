@@ -1,14 +1,15 @@
-# Import the instances, NOT the classes
-from app.shared.clients.telegram import telegram_client
-from app.shared.clients.storage import storage_client 
+# 1. CHANGE THIS IMPORT
+# Old: from app.shared.clients.telegram import telegram_client
+# New: Import the specific bot instance defined in shared/bot_instances.py
+from app.shared.bot_instances import euro_bot 
+from app.shared.clients.storage import storage_client
 import uuid
 
 async def save_user_profile_to_cloud(chat_id: int):
-    # Use the global instances directly.
-    # They are already "started" by main.py
+    # 2. CHANGE ALL USAGES from 'telegram_client' to 'euro_bot'
     
     # 1. Get Chat Info
-    chat_resp = await telegram_client.send_request("getChat", {"chat_id": chat_id})
+    chat_resp = await euro_bot.send_request("getChat", {"chat_id": chat_id})
     
     if not chat_resp.success:
         print(f"Could not get chat info: {chat_resp.error_message}")
@@ -24,13 +25,13 @@ async def save_user_profile_to_cloud(chat_id: int):
     file_id = photo_obj.get("big_file_id")
 
     # 3. Get File Path
-    file_path = await telegram_client.get_file_path(file_id)
+    file_path = await euro_bot.get_file_path(file_id)
     if not file_path:
         print("Could not retrieve file path from Telegram.")
         return False
 
     # 4. Download Binary
-    image_bytes = await telegram_client.download_file(file_path)
+    image_bytes = await euro_bot.download_file(file_path)
     if not image_bytes:
         print("Download failed.")
         return False

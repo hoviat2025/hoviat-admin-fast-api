@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     # ADMIN_API_TOKEN is removed! We don't use static tokens for admins anymore.
 
     # Telegram Bot Config
-    TELEGRAM_BOT_TOKEN: str
+    SENDER_BOT_TOKEN: str
+    EURO_BOT_TOKEN: str
     TELEGRAM_BASE_URL: str
 
     # R2 / S3 Configuration
