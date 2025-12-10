@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str
     R2_BUCKET_NAME: str
     
+    MAIN_CHANNEL_ID: str = "-1003307384504"
+    FORMATTER_WORKER_URL: str = "https://snowy-rain-3f69.safaee1361.workers.dev"
+    
     model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings()
