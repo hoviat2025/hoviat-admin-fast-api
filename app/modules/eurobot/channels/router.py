@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -6,10 +6,14 @@ from app.core.schemas import StandardResponse
 
 # Input Schema
 from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
-# Service
-from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-# Output Schema (Reuse the one from members module)
+
+# Output Schemas
 from app.modules.eurobot.members.schemas.bot_user_dto import BotUserResponse
+from app.modules.eurobot.channels.schemas.quote_reply_info_response import QuoteReplyInfoResponse
+
+# Services
+from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
+from app.modules.eurobot.channels.services.get_quote_reply_info_service import GetQuoteReplyInfoService
 
 router = APIRouter()
 
@@ -20,11 +24,25 @@ async def update_post(
 ):
     """
     Updates the post caption in the main channel for a specific user.
-    Returns the updated user object.
     """
     service = UpdateChannelPostService(db)
-    
-    # Execute returns the User model now
     updated_user = await service.execute(payload)
-    
     return StandardResponse.success(data=updated_user)
+
+
+@router.get("/quote_reply_info", response_model=StandardResponse[QuoteReplyInfoResponse])
+async def get_quote_reply_info(
+    user_id: int = Query(..., description="The User ID to fetch info for"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Checks sync status, updates if needed, and returns flattened component info + IDs.
+    """
+    service = GetQuoteReplyInfoService(db)
+    
+    # execute returns a dict like: 
+    # { "id": 5, "some_component_field": "abc", "channel_message_id": 123, ... }
+    flattened_data = await service.execute(user_id)
+    
+    # StandardResponse will wrap this in "data": { ... }
+    return StandardResponse.success(data=flattened_data)
