@@ -8,26 +8,34 @@ class UserBaseRepository:
 
     async def get_by_id(self, user_id: int) -> User | None:
         """
-        Fetches a user by their Telegram ID.
+        Fetches a user by their Telegram User ID.
         """
         stmt = select(User).where(User.user_id == user_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    # --- NEW METHOD ---
+    async def get_by_telegram_message_id(self, message_id: str) -> User | None:
+        """
+        Fetches a user by the message_id of their post in the Main Channel.
+        Used for mapping replies/forwards back to the user.
+        """
+        stmt = select(User).where(User.telegram_message_id == message_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+    # ------------------
+
     async def update(self, user_id: int, update_data: dict) -> User | None:
         """
-        Dynamic Update:
-        Takes a dictionary of fields (e.g. {"score": 10, "is_ban": True})
-        and updates ONLY those columns for the specific user.
+        Dynamic Update by User ID.
         """
-        # Safety check: SQLAlchemy generates invalid SQL if values() is empty
         if not update_data:
             return await self.get_by_id(user_id)
 
         stmt = (
             update(User)
             .where(User.user_id == user_id)
-            .values(**update_data) # <--- This is the magic dynamic part
+            .values(**update_data)
             .returning(User)
         )
         

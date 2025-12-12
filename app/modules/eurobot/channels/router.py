@@ -8,6 +8,8 @@ from app.core.schemas import StandardResponse
 # Input Schemas
 from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
 from app.modules.eurobot.channels.schemas.set_group_message_request import SetGroupMessageRequest
+# Import NEW Schema
+from app.modules.eurobot.channels.schemas.set_public_message_request import SetPublicMessageRequest
 
 # Output Schemas
 from app.modules.eurobot.members.schemas.bot_user_dto import BotUserResponse
@@ -18,16 +20,18 @@ from app.modules.eurobot.channels.services.update_channel_post_service import Up
 from app.modules.eurobot.channels.services.get_quote_reply_info_service import GetQuoteReplyInfoService
 from app.modules.eurobot.channels.services.batch_update_channel_service import BatchUpdateChannelService
 from app.modules.eurobot.channels.services.set_group_message_service import SetGroupMessageService
+# Import NEW Service
+from app.modules.eurobot.channels.services.set_public_message_service import SetPublicMessageService
 
-# 1. Protected Router (Internal API usage)
+
+# 1. Protected Router
 router = APIRouter()
 
-# 2. Webhook Router (Public/Telegram callbacks)
+# 2. Webhook Router (Public)
 telegram_webhook_router = APIRouter()
 
 
-# --- PROTECTED ENDPOINTS (Attached to 'router') ---
-
+# --- PROTECTED ENDPOINTS ---
 @router.post("/update_post", response_model=StandardResponse[BotUserResponse])
 async def update_post(
     payload: UpdateChannelPostRequest,
@@ -56,17 +60,27 @@ async def batch_sync_posts(
     return StandardResponse.success(data=report)
 
 
-# --- WEBHOOK ENDPOINTS (Attached to 'telegram_webhook_router') ---
+# --- WEBHOOK ENDPOINTS ---
 
 @telegram_webhook_router.put("/set_group_message_id_test", response_model=StandardResponse[BotUserResponse])
 async def set_group_message_id_test(
     payload: SetGroupMessageRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Webhook endpoint to sync message IDs from Telegram.
-    Publicly accessible (No Auth Token).
-    """
     service = SetGroupMessageService(db)
+    updated_user = await service.execute(payload)
+    return StandardResponse.success(data=updated_user)
+
+# --- NEW ENDPOINT HERE ---
+@telegram_webhook_router.put("/set_public_message_id_test", response_model=StandardResponse[BotUserResponse])
+async def set_public_message_id_test(
+    payload: SetPublicMessageRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Finds user by Main Channel Post ID (external_reply) and sets Public Channel IDs.
+    Public Access.
+    """
+    service = SetPublicMessageService(db)
     updated_user = await service.execute(payload)
     return StandardResponse.success(data=updated_user)
