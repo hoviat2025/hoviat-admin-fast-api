@@ -18,4 +18,5 @@ class BotUpdateMemberRequest(BaseModel):
     score: Optional[int] = None
     whatsapp_number: Optional[str] = None
     
-    model_config = ConfigDict(populate_by_name=True)
+    # extra='ignore' ensures any other fields sent in the JSON are discarded
+    model_config = ConfigDict(populate_by_name=True, extra='ignore')

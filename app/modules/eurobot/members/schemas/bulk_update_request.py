@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List
 from app.modules.eurobot.members.schemas.update_request import BotUpdateMemberRequest
 from app.modules.eurobot.members.schemas.bot_user_dto import BotUserResponse
@@ -10,6 +10,9 @@ class BulkUpdateMembersRequest(BaseModel):
         max_items=1000, 
         description="List of user objects to update. user_id is required in each object."
     )
+    
+    # Protect the wrapper object from extra fields as well
+    model_config = ConfigDict(extra='ignore')
 
 class BulkUpdateSuccessItem(BaseModel):
     index: int

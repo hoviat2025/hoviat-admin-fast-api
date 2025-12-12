@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, insert # Added insert
 from app.models.user import User
 
 class UserBaseRepository:
@@ -16,12 +16,21 @@ class UserBaseRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    # --- NEW METHOD ---
     async def get_by_public_message_id(self, message_id: str) -> User | None:
-        """
-        Fetches a user by the message_id of their post in the Public Channel.
-        """
         stmt = select(User).where(User.public_message_id == message_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    # --- NEW METHOD ---
+    async def create(self, create_data: dict) -> User:
+        """
+        Inserts a new user record.
+        """
+        stmt = (
+            insert(User)
+            .values(**create_data)
+            .returning(User)
+        )
         result = await self.db.execute(stmt)
         return result.scalars().first()
     # ------------------
