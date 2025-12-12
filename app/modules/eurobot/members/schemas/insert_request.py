@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, Union
+from typing import Optional
 
 class BotInsertMemberRequest(BaseModel):
     # Identifiers
@@ -25,12 +25,12 @@ class BotInsertMemberRequest(BaseModel):
     is_registered: bool = False
     
     # Numbers/Dates 
+    # CRITICAL FIX: Use 'int' strictly. 
+    # This ensures Pydantic converts string inputs like "0" to integer 0 
+    # BEFORE sending them to the database driver.
     score: int = 0
-    ban_time: Union[int, str] = 0 
-    join_date: Optional[Union[int, str]] = None
+    ban_time: int = 0 
+    join_date: Optional[int] = None
 
-    # Security Config:
-    # populate_by_name=True -> Allows using field names or aliases
-    # extra='ignore' -> CRITICAL: If client sends "admin": true or "hack": 1, 
-    #                   Pydantic silently discards them. They never reach the Service/DB.
+    # extra='ignore' ensures any other fields sent in the JSON are discarded
     model_config = ConfigDict(populate_by_name=True, extra='ignore')

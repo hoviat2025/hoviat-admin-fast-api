@@ -11,8 +11,8 @@ from app.modules.eurobot.members.schemas.update_request import BotUpdateMemberRe
 from app.modules.eurobot.members.schemas.bulk_read_request import BulkReadMembersRequest
 from app.modules.eurobot.members.schemas.bulk_update_request import BulkUpdateMembersRequest, BulkUpdateResultData
 from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
-# [NEW IMPORT]
 from app.modules.eurobot.members.schemas.bulk_insert_request import BulkInsertMembersRequest, BulkInsertResultData
+from app.modules.eurobot.members.schemas.bulk_upsert_request import BulkUpsertMembersRequest, BulkUpsertResultData
 
 # --- Services ---
 from app.modules.eurobot.members.services.get_member_service import GetMemberService
@@ -21,8 +21,10 @@ from app.modules.eurobot.members.services.bulk_read_members_service import BulkR
 from app.modules.eurobot.members.services.get_member_by_message_service import GetMemberByMessageService
 from app.modules.eurobot.members.services.bulk_update_members_service import BulkUpdateMembersService
 from app.modules.eurobot.members.services.insert_member_service import InsertMemberService
-# [NEW IMPORT]
 from app.modules.eurobot.members.services.bulk_insert_members_service import BulkInsertMembersService
+from app.modules.eurobot.members.services.bulk_upsert_members_service import BulkUpsertMembersService
+# [NEW IMPORT]
+from app.modules.eurobot.members.services.upsert_member_service import UpsertMemberService
 
 router = APIRouter()
 
@@ -60,12 +62,7 @@ async def update_bulk_members(
 ):
     service = BulkUpdateMembersService(db)
     result = await service.execute(payload.users_info)
-    
-    meta_stats = {
-        "successful": len(result.successful),
-        "failed": len(result.failed)
-    }
-    
+    meta_stats = {"successful": len(result.successful), "failed": len(result.failed)}
     return StandardResponse.success(data=result, meta=meta_stats)
 
 @router.post("/insert_member", response_model=StandardResponse[BotUserResponse])
@@ -77,26 +74,41 @@ async def insert_member(
     new_user = await service.execute(payload)
     return StandardResponse.success(data=new_user)
 
-# --- NEW ENDPOINT: BULK INSERT ---
 @router.post("/insert_bulk_members", response_model=StandardResponse[BulkInsertResultData])
 async def insert_bulk_members(
     payload: BulkInsertMembersRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Inserts multiple members. 
-    If a user already exists (duplicate key), it is returned in the 'failed' list.
-    """
     service = BulkInsertMembersService(db)
     result = await service.execute(payload.users_info)
-    
-    meta_stats = {
-        "successful": len(result.successful),
-        "failed": len(result.failed)
-    }
-    
+    meta_stats = {"successful": len(result.successful), "failed": len(result.failed)}
     return StandardResponse.success(data=result, meta=meta_stats)
-# ---------------------------------
+
+# --- NEW ENDPOINT: SINGLE UPSERT ---
+@router.post("/upsert_member", response_model=StandardResponse[BotUserResponse])
+async def upsert_member(
+    payload: BotInsertMemberRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upserts a single member.
+    If user_id exists -> Update.
+    If user_id new -> Insert.
+    """
+    service = UpsertMemberService(db)
+    user = await service.execute(payload)
+    return StandardResponse.success(data=user)
+# -----------------------------------
+
+@router.post("/upsert_bulk_members", response_model=StandardResponse[BulkUpsertResultData])
+async def upsert_bulk_members(
+    payload: BulkUpsertMembersRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    service = BulkUpsertMembersService(db)
+    result = await service.execute(payload.users_info)
+    meta_stats = {"successful": len(result.successful), "failed": len(result.failed)}
+    return StandardResponse.success(data=result, meta=meta_stats)
 
 @router.put("/update_member", response_model=StandardResponse[BotUserResponse])
 async def update_member(
