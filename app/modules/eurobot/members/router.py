@@ -14,6 +14,8 @@ from app.modules.eurobot.members.schemas.bulk_read_request import BulkReadMember
 from app.modules.eurobot.members.services.get_member_service import GetMemberService
 from app.modules.eurobot.members.services.update_member_service import UpdateMemberService
 from app.modules.eurobot.members.services.bulk_read_members_service import BulkReadMembersService
+# Import New Service
+from app.modules.eurobot.members.services.get_member_by_message_service import GetMemberByMessageService
 
 router = APIRouter()
 
@@ -26,14 +28,26 @@ async def read_member(
     user = await service.execute(user_id)
     return StandardResponse.success(data=user)
 
+# --- NEW ENDPOINT ---
+@router.get("/member_by_message", response_model=StandardResponse[BotUserResponse])
+async def member_by_message(
+    public_message_id: int = Query(..., description="The message ID in the public channel"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Fetches a user based on their public channel message ID.
+    Protected by Bot Token.
+    """
+    service = GetMemberByMessageService(db)
+    user = await service.execute(public_message_id)
+    return StandardResponse.success(data=user)
+# --------------------
+
 @router.post("/read_bulk_members", response_model=StandardResponse[Dict[str, Optional[BotUserResponse]]])
 async def read_bulk_members(
     payload: BulkReadMembersRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Accepts a list of user_ids and returns a dictionary mapping IDs to user data (or null).
-    """
     service = BulkReadMembersService(db)
     result_map = await service.execute(payload.user_ids)
     return StandardResponse.success(data=result_map)
