@@ -10,8 +10,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str       # Crucial: Application will fail to start if missing
     
     # --- Auth Config (Constants/Business Logic can stay here) ---
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080 
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
     BOT_API_TOKEN: str
 
     # --- Telegram Config ---

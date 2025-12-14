@@ -1,37 +1,50 @@
 import asyncio
-import sys
-import os
-
-# --- PATH HACK: Add the project root to Python path ---
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.models.admin import Admin
 from app.core.security import get_password_hash
 
-async def create_admin():
-    print("--- Create Superuser ---")
-    username = input("Enter username: ")
-    password = input("Enter password: ")
+async def create_superuser():
+    print("\n--- 🛡️  Create Superuser 🛡️  ---")
+    
+    # 1. Get Inputs
+    username = input("Enter username: ").strip()
+    if not username:
+        print("❌ Error: Username cannot be empty.")
+        return
 
+    password = input("Enter password: ").strip()
+    if len(password) < 4:
+        print("❌ Error: Password is too short.")
+        return
+
+    # 2. Database Operation
     async with AsyncSessionLocal() as session:
-        # 1. Check if user exists
-        # (Note: We are lazy here and don't import the Repo, just raw SQL for the script)
-        from sqlalchemy import select
-        result = await session.execute(select(Admin).where(Admin.username == username))
-        if result.scalars().first():
-            print("Error: That username already exists.")
+        # Check for existing user
+        query = select(Admin).where(Admin.username == username)
+        result = await session.execute(query)
+        existing_admin = result.scalars().first()
+
+        if existing_admin:
+            print(f"❌ Error: Admin '{username}' already exists.")
             return
 
-        # 2. Create the Admin
+        # Create new Superuser
         new_admin = Admin(
             username=username,
-            password_hash=get_password_hash(password) # <--- Hashing happens here
+            password_hash=get_password_hash(password),
+            is_active=True,
+            is_superadmin=True,   # <--- Grants permission to manage other admins
+            has_all_rights=True   # <--- Grants permission to manage everything else
         )
         
         session.add(new_admin)
         await session.commit()
-        print(f"✅ Success! Admin '{username}' created.")
+        
+        print(f"✅ Success! Superuser '{username}' created.")
 
 if __name__ == "__main__":
-    asyncio.run(create_admin())
+    try:
+        asyncio.run(create_superuser())
+    except KeyboardInterrupt:
+        print("\nCancelled.")

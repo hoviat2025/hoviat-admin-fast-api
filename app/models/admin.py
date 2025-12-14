@@ -9,6 +9,9 @@ class Admin(Base):
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     
-    # Audit fields
-    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    # Permission Flags
     is_active = Column(Boolean, default=True)
+    is_superadmin = Column(Boolean, default=False)
+    has_all_rights = Column(Boolean, default=True)
+    
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
