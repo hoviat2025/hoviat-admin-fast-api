@@ -83,3 +83,19 @@ async def require_read_users_permission(
         status_code=status.HTTP_403_FORBIDDEN, 
         detail="You do not have permission to view users."
     )
+
+async def require_write_users_permission(
+    admin: Admin = Depends(get_current_admin)
+) -> Admin:
+    """
+    Async Dependency.
+    Ensures Admin has write/edit permissions.
+    Currently checks for superadmin or has_all_rights.
+    """
+    if admin.is_superadmin or admin.has_all_rights:
+        return admin
+        
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, 
+        detail="You do not have permission to edit users."
+    )

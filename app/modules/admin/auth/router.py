@@ -1,27 +1,31 @@
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
-# 1. Import the Wrapper
-from app.core.schemas import StandardResponse
+# Note: We do NOT use StandardResponse for login.
+# OAuth2 specs and Swagger UI require the 'access_token' field to be 
+# at the root level of the JSON response, not inside "data".
 from app.modules.admin.auth.schemas.login import TokenResponse
 from app.modules.admin.auth.services.login import LoginService
 from app.modules.admin.auth.dependencies import get_login_service
 
 router = APIRouter()
 
-@router.post("/login", response_model=StandardResponse[TokenResponse])
+@router.post("/login", response_model=TokenResponse)
 async def login_admin(
     form_data: OAuth2PasswordRequestForm = Depends(),
     service: LoginService = Depends(get_login_service)
 ):
     """
     Admin Login Endpoint. 
-    Accepts form-data (username/password) and returns a Bearer Token.
+    
+    Returns the TokenResponse directly (unwrapped) so Swagger UI 
+    and standard OAuth2 clients can parse the 'access_token' automatically.
     """
+    # service.authenticate returns the TokenResponse Pydantic model
     result = await service.authenticate(
         username=form_data.username, 
         password=form_data.password
     )
     
-    # 2. Return wrapped success response
-    return StandardResponse.success(result)
+    # Return directly (No StandardResponse wrapper)
+    return result
