@@ -1,11 +1,15 @@
 from fastapi import status
+from typing import Dict, Any
+
 from app.core.exceptions import ServiceError
 from app.shared.repositories.user_base import UserBaseRepository
 from app.modules.admin.users_management.schemas.get_user import FullUserResponse
 from app.modules.admin.users_management.schemas.update_user import UpdateUserRequest
+from app.modules.admin.users_management.repositories.user_search import UserSearchRepository
+from app.modules.admin.users_management.filters.user_filter import UserFilter
 
 class UserManagementService:
-    def __init__(self, user_repo: UserBaseRepository):
+    def __init__(self, user_repo: UserSearchRepository):
         self.user_repo = user_repo
 
     async def fetch_user_by_id(self, user_id: int) -> FullUserResponse:
@@ -24,17 +28,16 @@ class UserManagementService:
         """
         Updates a user based on user_id.
         """
-        # 1. Prepare data (Exclude unset fields so we don't overwrite with defaults)
+        # 1. Prepare data
         update_data = payload.model_dump(exclude_unset=True)
         
-        # Remove user_id from the update data (it's the matcher, not a value to change)
         if 'user_id' in update_data:
             del update_data['user_id']
 
-        # 2. Call Repository (Executes the SQL, but does not commit yet)
+        # 2. Update
         updated_user = await self.user_repo.update(payload.user_id, update_data)
 
-        # 3. Check Result
+        # 3. Check
         if not updated_user:
             raise ServiceError(
                 code="USER_NOT_FOUND",
@@ -42,8 +45,35 @@ class UserManagementService:
                 status_code=status.HTTP_404_NOT_FOUND
             )
         
-        # 4. COMMIT THE TRANSACTION
-        # We access the session through the repo to save the changes permanently.
+        # 4. Commit
         await self.user_repo.db.commit()
         
         return updated_user
+    
+    async def list_users(
+        self, 
+        user_filter: UserFilter, 
+        search: str | None, 
+        page: int, 
+        size: int
+    ) -> Dict[str, Any]:
+        """
+        Returns a dictionary containing the items and pagination stats.
+        The Router will be responsible for splitting this into 'data' and 'meta'.
+        """
+        users, total = await self.user_repo.search_users(
+            user_filter=user_filter,
+            search_query=search,
+            page=page,
+            page_size=size
+        )
+        
+        return {
+            "items": users,
+            "pagination": {
+                "total": total,
+                "page": page,
+                "size": size,
+                "pages": (total + size - 1) // size 
+            }
+        }
