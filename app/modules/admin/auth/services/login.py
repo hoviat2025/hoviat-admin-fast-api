@@ -1,6 +1,8 @@
 from datetime import timedelta
-from fastapi import HTTPException, status
+from fastapi import status
 
+# 1. Import your custom exception
+from app.core.exceptions import ServiceError
 from app.core.security import verify_password, create_access_token
 from app.core.config import settings
 from app.modules.admin.repositories.admin import AdminRepository
@@ -20,22 +22,22 @@ class LoginService:
         # 1. Fetch User
         admin = await self.admin_repo.get_by_username(username)
 
-        # 2. Generic Error (Security Best Practice)
-        credentials_exception = HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # 2. Verify Credentials
+        # We use a generic error message to prevent user enumeration
+        if not admin or not verify_password(password, admin.password_hash):
+            raise ServiceError(
+                code="INVALID_CREDENTIALS",
+                message="Incorrect username or password",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
 
-        # 3. Verify
-        if not admin:
-            raise credentials_exception
-
-        if not verify_password(password, admin.password_hash):
-            raise credentials_exception
-
+        # 3. Check Active Status
         if not admin.is_active:
-             raise HTTPException(status_code=400, detail="Admin account is inactive")
+             raise ServiceError(
+                 code="ACCOUNT_INACTIVE",
+                 message="Admin account is inactive",
+                 status_code=status.HTTP_400_BAD_REQUEST
+             )
 
         # 4. Create Token
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

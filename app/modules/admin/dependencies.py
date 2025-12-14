@@ -11,26 +11,26 @@ from app.modules.admin.repositories.admin import AdminRepository
 # Swagger UI configuration
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/auth/login")
 
+# ---------------------------------------------------------
+# 1. REPOSITORY INJECTION
+# ---------------------------------------------------------
+
 def get_admin_repository(db: AsyncSession = Depends(get_db)) -> AdminRepository:
     """
     Provides the AdminRepository to any Admin sub-module.
     """
     return AdminRepository(db)
 
+# ---------------------------------------------------------
+# 2. AUTHENTICATION (Login Check)
+# ---------------------------------------------------------
+
 async def get_current_admin(
     token: str = Depends(oauth2_scheme),
     repo: AdminRepository = Depends(get_admin_repository)
 ) -> Admin:
     """
-    Validates the JWT token AND checks the Database for the Admin's existence and status.
-    
-    Returns:
-        The Admin ORM object if valid and active.
-        
-    Raises:
-        401: Invalid token, or Admin deleted.
-        400: Admin is inactive (soft deleted).
-        403: Not an admin role.
+    Validates JWT and checks DB for Admin existence/status.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -39,7 +39,6 @@ async def get_current_admin(
     )
 
     try:
-        # 1. Decode Token
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
         role: str = payload.get("role")
@@ -53,13 +52,11 @@ async def get_current_admin(
                 detail="Not enough permissions"
             )
         
-        # 2. Check Database (Strict Revocation Check)
         admin = await repo.get_by_id(int(user_id))
         
         if admin is None:
             raise credentials_exception
             
-        # 3. Check Active Status
         if not admin.is_active:
             raise HTTPException(status_code=400, detail="Admin account is inactive")
             
@@ -67,3 +64,22 @@ async def get_current_admin(
 
     except (JWTError, ValueError):
         raise credentials_exception
+
+# ---------------------------------------------------------
+# 3. AUTHORIZATION (Permission Checks)
+# ---------------------------------------------------------
+
+async def require_read_users_permission(
+    admin: Admin = Depends(get_current_admin)
+) -> Admin:
+    """
+    Async Dependency.
+    Ensures Admin has 'read_users' rights (via Superadmin or All Rights flag).
+    """
+    if admin.is_superadmin or admin.has_all_rights:
+        return admin
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, 
+        detail="You do not have permission to view users."
+    )
