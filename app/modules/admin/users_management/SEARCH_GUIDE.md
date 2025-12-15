@@ -82,9 +82,12 @@ C. Specific Field Filters
 
 All filters below act as AND conditions.
 
-1. Text Fields (Auto-Partial Match)
+1. Text Fields (Exact & Partial Matches)
 
-The system automatically applies wildcards. You do not need to add %.
+For text fields, you can choose between an exact match or a partial "contains" search.
+
+a) Exact Match
+Use the field name directly. The value must match exactly (case-sensitive depending on DB collation).
 
 username
 
@@ -102,7 +105,28 @@ whatsapp_number
 
 profile_path
 
-Example: ?country=norway (Matches "Norway", "Norway South", etc.)
+Example: ?country=Germany (Finds users where country is exactly "Germany")
+
+b) Partial Match (Contains)
+Append _contains to the field name. The system automatically applies wildcards (e.g., %value%) and ignores case.
+
+username_contains
+
+first_name_contains
+
+last_name_contains
+
+nickname_contains
+
+country_contains
+
+phone_number_contains
+
+whatsapp_number_contains
+
+profile_path_contains
+
+Example: ?country_contains=many (Matches "Germany", "Romany", etc.)
 
 2. Exact Matches (IDs & Codes)
 
@@ -231,7 +255,9 @@ Filter Definition: app/modules/admin/users_management/filters/user_filter.py
 
 Defines the aliases (e.g., min_score -> score__gte).
 
-Contains a validator to automatically wrap text searches in %.
+Defines separate fields for exact matches (username) and partial matches (username__ilike alias username_contains).
+
+Contains a validator to automatically wrap _contains text searches in %.
 
 Repository: app/modules/admin/users_management/repositories/user_search.py
 

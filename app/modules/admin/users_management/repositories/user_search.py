@@ -7,7 +7,7 @@ from app.shared.repositories.user_base import UserBaseRepository
 from app.modules.admin.users_management.filters.user_filter import UserFilter
 
 class UserSearchRepository(UserBaseRepository):
-    
+
     async def search_users(
         self, 
         user_filter: UserFilter, 
@@ -17,14 +17,15 @@ class UserSearchRepository(UserBaseRepository):
     ) -> Tuple[List[User], int]:
         
         # --- DEBUG LOG ---
-        # Check your terminal to see exactly what filters are arriving
-        print(f"DEBUG: Search Query: {search_query}")
+        # Useful to verify if exact match vs contains match is triggering correctly
+        print(f"DEBUG: Global Search: {search_query}")
         print(f"DEBUG: Filter Dict: {user_filter.model_dump(exclude_unset=True)}")
         # -----------------
 
         stmt = select(User)
 
-        # 1. Apply Universal Search
+        # 1. Apply Universal Search (OR Logic)
+        # This allows searching across multiple columns simultaneously without knowing specific field names.
         if search_query:
             term = f"%{search_query}%"
             stmt = stmt.where(
@@ -35,17 +36,19 @@ class UserSearchRepository(UserBaseRepository):
                     User.nickname.ilike(term),
                     User.accounting_code.ilike(term),
                     User.phone_number.ilike(term),
-                    User.country.ilike(term) # Added country to global search too
+                    User.country.ilike(term)
                 )
             )
 
-        # 2. Apply the fastapi-filter logic
+        # 2. Apply Specific Filters (AND Logic)
+        # This applies the exact matches, ranges, and 'contains' logic defined in UserFilter
         stmt = user_filter.filter(stmt)
         
         # 3. Apply Sorting
         stmt = user_filter.sort(stmt)
 
         # 4. Pagination
+        # Calculate total count before applying limit/offset
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total_result = await self.db.execute(count_stmt)
         total_count = total_result.scalar_one()

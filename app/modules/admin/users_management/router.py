@@ -6,6 +6,7 @@ from fastapi_filter import FilterDepends
 from app.core.schemas import StandardResponse
 from app.modules.admin.users_management.schemas.get_user import FullUserResponse
 from app.modules.admin.users_management.schemas.update_user import UpdateUserRequest
+
 # Import the new schema for Meta
 from app.modules.admin.users_management.schemas.list_users import PaginationMeta
 from app.modules.admin.users_management.services.user_service import UserManagementService
@@ -23,13 +24,20 @@ router = APIRouter()
 )
 async def list_users(
     user_filter: UserFilter = FilterDepends(UserFilter),
-    search: str | None = Query(None, description="Global search across name, email, etc."),
+    search: str | None = Query(None, description="Global search across name, email, country, etc."),
     page: int = Query(1, ge=1, description="Page number"),
     size: int = Query(20, ge=1, le=100, description="Items per page"),
     service: UserManagementService = Depends(get_user_management_service)
 ):
     """
     Advanced Search for Users.
+    
+    Filtering Options:
+    1. Exact Match: ?username=john (Matches exactly 'john')
+    2. Partial Match: ?username_contains=john (Matches 'johnson', 'littlejohn')
+    3. Null Check: ?no_username=true (Matches users with no username)
+    4. Global Search: ?search=john (Matches john in name, phone, country, etc.)
+    
     Pagination details are returned in the 'meta' field.
     """
     # 1. Get result from service (contains both items and stats)
@@ -37,7 +45,7 @@ async def list_users(
     
     # 2. Extract Data
     items = result["items"]
-    
+
     # 3. Extract Meta using the Pydantic model for validation
     meta_info = PaginationMeta(**result["pagination"])
     
@@ -48,7 +56,7 @@ async def list_users(
     )
 
 @router.get(
-    "/{user_id}", 
+    "/{user_id}",
     response_model=StandardResponse[FullUserResponse],
     dependencies=[Depends(require_read_users_permission)]
 )
