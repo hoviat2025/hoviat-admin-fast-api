@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.middleware import register_middleware
 
 # --- IMPORTS ---
 from app.modules.admin.router import router as admin_router
@@ -28,8 +29,11 @@ async def lifespan(app: FastAPI):
 # --- APP SETUP ---
 app = FastAPI(
     title="Unified API",
-    lifespan=lifespan  # <--- Bind the manager here
+    lifespan=lifespan
 )
+
+# --- REGISTER MIDDLEWARE (CORS) ---
+register_middleware(app)
 
 # --- REGISTER EXCEPTION HANDLERS ---
 register_exception_handlers(app)
