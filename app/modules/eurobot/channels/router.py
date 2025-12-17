@@ -13,11 +13,9 @@ from app.modules.eurobot.channels.schemas.set_public_message_request import SetP
 
 # Output Schemas
 from app.modules.eurobot.members.schemas.bot_user_dto import BotUserResponse
-from app.modules.eurobot.channels.schemas.quote_reply_info_response import QuoteReplyInfoResponse
 
 # Services
 from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-from app.modules.eurobot.channels.services.get_quote_reply_info_service import GetQuoteReplyInfoService
 from app.modules.eurobot.channels.services.batch_update_channel_service import BatchUpdateChannelService
 from app.modules.eurobot.channels.services.set_group_message_service import SetGroupMessageService
 # Import NEW Service
@@ -41,14 +39,7 @@ async def update_post(
     updated_user = await service.execute(payload)
     return StandardResponse.success(data=updated_user)
 
-@router.get("/quote_reply_info", response_model=StandardResponse[QuoteReplyInfoResponse])
-async def get_quote_reply_info(
-    user_id: int = Query(..., description="The User ID to fetch info for"),
-    db: AsyncSession = Depends(get_db)
-):
-    service = GetQuoteReplyInfoService(db)
-    flattened_data = await service.execute(user_id)
-    return StandardResponse.success(data=flattened_data)
+
 
 @router.post("/batch_sync_posts", response_model=StandardResponse[Dict[str, Any]])
 async def batch_sync_posts(

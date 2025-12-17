@@ -13,6 +13,7 @@ from app.modules.eurobot.members.schemas.bulk_update_request import BulkUpdateMe
 from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
 from app.modules.eurobot.members.schemas.bulk_insert_request import BulkInsertMembersRequest, BulkInsertResultData
 from app.modules.eurobot.members.schemas.bulk_upsert_request import BulkUpsertMembersRequest, BulkUpsertResultData
+from app.modules.eurobot.members.schemas.quote_reply_info_response import QuoteReplyInfoResponse
 
 # --- Services ---
 from app.modules.eurobot.members.services.get_member_service import GetMemberService
@@ -23,8 +24,8 @@ from app.modules.eurobot.members.services.bulk_update_members_service import Bul
 from app.modules.eurobot.members.services.insert_member_service import InsertMemberService
 from app.modules.eurobot.members.services.bulk_insert_members_service import BulkInsertMembersService
 from app.modules.eurobot.members.services.bulk_upsert_members_service import BulkUpsertMembersService
-# [NEW IMPORT]
 from app.modules.eurobot.members.services.upsert_member_service import UpsertMemberService
+from app.modules.eurobot.members.services.get_quote_reply_info_service import GetQuoteReplyInfoService
 
 router = APIRouter()
 
@@ -45,6 +46,15 @@ async def member_by_message(
     service = GetMemberByMessageService(db)
     user = await service.execute(public_message_id)
     return StandardResponse.success(data=user)
+
+@router.get("/quote_reply_info", response_model=StandardResponse[QuoteReplyInfoResponse])
+async def get_quote_reply_info(
+    user_id: int = Query(..., description="The User ID to fetch info for"),
+    db: AsyncSession = Depends(get_db)
+):
+    service = GetQuoteReplyInfoService(db)
+    flattened_data = await service.execute(user_id)
+    return StandardResponse.success(data=flattened_data)
 
 @router.post("/read_bulk_members", response_model=StandardResponse[Dict[str, Optional[BotUserResponse]]])
 async def read_bulk_members(
