@@ -83,22 +83,24 @@ class UpdateChannelPostService:
                 picture_file=picture_file,
                 user_id=user_id
             )
-            logger.info(f"Main channel photo sent for {user_id}. API returned ID: {main_msg_id}")
-
+            print(f"Main channel photo sent for {user_id}. API returned ID: {main_msg_id}")
+            await asyncio.sleep(3)
             # --- STEP B: Send Public Channel Message (Using ID from Step A) ---
             # We do NOT wait for DB confirmation here. We assume the ID is valid.
             await self._send_user_post_in_public_channel(main_msg_id)
-            logger.info(f"Public channel post sent for {user_id} referencing ID {main_msg_id}")
-
+            print(f"Public channel post sent for {user_id} referencing ID {main_msg_id}")
+            
+             
+            await asyncio.sleep(3)
             # --- STEP C: Confirm Main Channel Webhook ---
             # Now we wait for the webhook to update the DB for the first message
             user = await self._confirm_group_message(user_id)
-            logger.info(f"DB Confirmed Main Message. TG_MSG_ID: {user.telegram_message_id}, GRP_MSG_ID: {user.group_message_id}")
+            print(f"DB Confirmed Main Message. TG_MSG_ID: {user.telegram_message_id}, GRP_MSG_ID: {user.group_message_id}")
 
             # --- STEP D: Confirm Public Channel Webhook ---
             # Now we wait for the webhook to update the DB for the second message
             await self._confirm_public_group_post(user_id)
-            logger.info(f"DB Confirmed Public Message.")
+            print(f"DB Confirmed Public Message.")
 
         except Exception as e:
             # Strategic Error Logging & Rollback
@@ -219,7 +221,7 @@ class UpdateChannelPostService:
         Polls DB until group_message_id appears.
         """
         start_time = datetime.now()
-        timeout_seconds = 30
+        timeout_seconds = 45
         
         while (datetime.now() - start_time).total_seconds() < timeout_seconds:
             # FIX: We MUST commit to refresh the transaction snapshot.
@@ -229,11 +231,14 @@ class UpdateChannelPostService:
             user = await self.repo.get_by_id(user_id)
             
             if user:
+                # Force refresh from DB to ignore SQLAlchemy Identity Map cache
+                await self.db.refresh(user)
+
                 # We need both IDs to be present to consider it fully 'confirmed'
                 if user.group_message_id is not None and user.telegram_message_id is not None:
                     return user
             
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
             
         logger.error(f"Timeout waiting for group_message_id for user {user_id}")
         raise ServiceError(
@@ -271,10 +276,14 @@ class UpdateChannelPostService:
             await self.db.commit()
             
             user = await self.repo.get_by_id(user_id)
-            if user and user.public_group_message_id is not None:
-                logger.info(f"Public Group Message Confirmed: {user.public_group_message_id}")
-                return user
-            await asyncio.sleep(0.2)
+            if user:
+                # Force refresh from DB to ignore SQLAlchemy Identity Map cache
+                await self.db.refresh(user)
+                
+                if user.public_group_message_id is not None:
+                    logger.info(f"Public Group Message Confirmed: {user.public_group_message_id}")
+                    return user
+            await asyncio.sleep(5)
             
         logger.error(f"Timeout waiting for PUBLIC group_message_id for user {user_id}")
         raise Exception("Timed out waiting for Public Group Message ID")
