@@ -1,11 +1,20 @@
-import re
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
+# Core & Models
 from app.models.user import User
-from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
+
+# Schemas
+from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
+
+# --- ADDED IMPORTS ---
+from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
+from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
+
+logger = logging.getLogger(__name__)
 
 class InsertMemberService:
     def __init__(self, db: AsyncSession):
@@ -16,14 +25,10 @@ class InsertMemberService:
         """Helper to extract user-friendly messages from DB errors."""
         raw_msg = str(error_obj.orig) if hasattr(error_obj, 'orig') else str(error_obj)
         
-        # PostgreSQL usually returns: "Duplicate... \nDETAIL: Key (x)=(y) already exists."
         if "DETAIL:" in raw_msg:
-            # Split by DETAIL: and take the second part
             return raw_msg.split("DETAIL:", 1)[1].strip()
         
-        # Fallback: remove the class name if it appears at the start (e.g., <class '...'>: )
         if raw_msg.strip().startswith("<class"):
-            # Find the first colon and take everything after it
             parts = raw_msg.split(":", 1)
             if len(parts) > 1:
                 return parts[1].strip()
@@ -38,18 +43,38 @@ class InsertMemberService:
         insert_data["chat_not_found"] = False
 
         try:
-            # 2. Call Repo
+            # 2. Call Repo (Creates the user object in session)
             new_user = await self.repo.create(insert_data)
             
             # 3. Commit Transaction
+            # This saves the user to the DB so the UpdateChannelPostService can access it.
             await self.db.commit()
+            
+            # Refresh ensures the instance is up-to-date and attached to the session
+            # (useful if the DB triggers updated default timestamps, etc.)
+            await self.db.refresh(new_user)
+
+            # --- 4. Call Update Channel Service ---
+            try:
+                update_service = UpdateChannelPostService(self.db)
+                
+                # We use new_user.user_id (which you confirmed is the field name)
+                update_payload = UpdateChannelPostRequest(user_id=new_user.user_id)
+                
+                # Execute the update. 
+                # The service returns the updated user object (with sync timestamps), so we update our reference.
+                new_user = await update_service.execute(update_payload)
+                
+            except Exception as e:
+                # If the channel update fails, we log it but do NOT rollback the User creation.
+                # The user was successfully created in step 3.
+                logger.error(f"User {new_user.user_id} created, but failed to update channel post: {e}")
+                
             return new_user
 
         except IntegrityError as e:
             await self.db.rollback()
-            
             clean_message = self._clean_db_error(e)
-            
             raise ServiceError(
                 code="CONFLICT_OCCURRED",
                 message=clean_message,

@@ -1,3 +1,4 @@
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
@@ -5,6 +6,12 @@ from app.models.user import User
 from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
+
+# --- ADDED IMPORTS ---
+from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
+from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
+
+logger = logging.getLogger(__name__)
 
 class UpsertMemberService:
     def __init__(self, db: AsyncSession):
@@ -34,7 +41,29 @@ class UpsertMemberService:
             user = await self.repo.upsert(upsert_data)
             
             # 3. Commit
+            # Save the upsert changes to the DB first.
             await self.db.commit()
+
+            # Refreshing ensures the object is bound to the session and up-to-date
+            # before passing it to the next service.
+            await self.db.refresh(user)
+
+            # --- 4. Call Update Channel Service ---
+            try:
+                update_service = UpdateChannelPostService(self.db)
+                
+                # Prepare the request using the user_id
+                update_payload = UpdateChannelPostRequest(user_id=user.user_id)
+                
+                # Execute the update. 
+                # This syncs the user with the Telegram channel.
+                user = await update_service.execute(update_payload)
+
+            except Exception as e:
+                # Log the error but do NOT rollback the Upsert.
+                # The user data is safe in the DB.
+                logger.error(f"User {user.user_id} upserted, but failed to update channel post: {e}")
+
             return user
 
         except IntegrityError as e:
