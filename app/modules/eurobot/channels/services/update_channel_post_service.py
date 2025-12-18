@@ -233,7 +233,7 @@ class UpdateChannelPostService:
                 if user.group_message_id is not None and user.telegram_message_id is not None:
                     return user
             
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(2)
             
         logger.error(f"Timeout waiting for group_message_id for user {user_id}")
         raise ServiceError(
@@ -265,7 +265,7 @@ class UpdateChannelPostService:
 
     async def _confirm_public_group_post(self, user_id: int) -> User:
         start_time = datetime.now()
-        timeout = 20
+        timeout = 30
         while (datetime.now() - start_time).total_seconds() < timeout:
             # FIX: Commit to see parallel updates.
             await self.db.commit()
@@ -274,7 +274,7 @@ class UpdateChannelPostService:
             if user and user.public_group_message_id is not None:
                 logger.info(f"Public Group Message Confirmed: {user.public_group_message_id}")
                 return user
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.2)
             
         logger.error(f"Timeout waiting for PUBLIC group_message_id for user {user_id}")
         raise Exception("Timed out waiting for Public Group Message ID")
