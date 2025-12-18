@@ -75,26 +75,34 @@ class UpdateChannelPostService:
         # 2. Formatter
         formatted_text = await self._main_channel_formatter(user)
 
-        # 3. Send Photo to Main Channel
-        await self._send_photo_to_main_channel(
-            formatted_text=formatted_text,
-            picture_file=picture_file,
-            user_id=user_id
-        )
-        logger.info(f"Main channel photo sent for {user_id}. Waiting for DB Webhook confirmation...")
-        
-        # 4. Confirm Group Message (Polling DB)
-        # This refreshes the user object with the new IDs
-        user = await self._confirm_group_message(user_id)
-        logger.info(f"Group Message Confirmed. TG_MSG_ID: {user.telegram_message_id}, GRP_MSG_ID: {user.group_message_id}")
-
-        # 5. Set Public Channel Posts
         try:
-            await self._set_public_channel_posts(user)
-            logger.info(f"Public channel flow finished for {user_id}")
+            # --- STEP A: Send Main Channel Message ---
+            # We get the ID immediately to use in the next step
+            main_msg_id = await self._send_photo_to_main_channel(
+                formatted_text=formatted_text,
+                picture_file=picture_file,
+                user_id=user_id
+            )
+            logger.info(f"Main channel photo sent for {user_id}. API returned ID: {main_msg_id}")
+
+            # --- STEP B: Send Public Channel Message (Using ID from Step A) ---
+            # We do NOT wait for DB confirmation here. We assume the ID is valid.
+            await self._send_user_post_in_public_channel(main_msg_id)
+            logger.info(f"Public channel post sent for {user_id} referencing ID {main_msg_id}")
+
+            # --- STEP C: Confirm Main Channel Webhook ---
+            # Now we wait for the webhook to update the DB for the first message
+            user = await self._confirm_group_message(user_id)
+            logger.info(f"DB Confirmed Main Message. TG_MSG_ID: {user.telegram_message_id}, GRP_MSG_ID: {user.group_message_id}")
+
+            # --- STEP D: Confirm Public Channel Webhook ---
+            # Now we wait for the webhook to update the DB for the second message
+            await self._confirm_public_group_post(user_id)
+            logger.info(f"DB Confirmed Public Message.")
+
         except Exception as e:
-            # Strategic Error Logging
-            logger.error(f"CRITICAL: Public Post Flow Failed for {user_id}. Error: {str(e)}")
+            # Strategic Error Logging & Rollback
+            logger.error(f"CRITICAL: Insert Flow Failed for {user_id}. Error: {str(e)}")
             logger.info(f"Initiating Rollback (NULL updates) for {user_id}")
             
             try:
@@ -104,10 +112,10 @@ class UpdateChannelPostService:
             except Exception as rollback_error:
                 logger.critical(f"FATAL: Rollback failed for {user_id}: {rollback_error}")
             
-            # Re-raise to 500 as per pseudo-code
-            raise ServiceError(code="PUBLIC_POST_FAILED", message="Failed to set public posts", status_code=500)
+            # Re-raise to 500
+            raise ServiceError(code="INSERT_FLOW_FAILED", message="Failed to set posts", status_code=500)
 
-        # 6. Final DB Update (Success)
+        # 3. Final DB Update (Success)
         final_user = await self._update_profile_and_success_fields(
             user_id=user_id,
             image_path=image_path,
@@ -182,7 +190,10 @@ class UpdateChannelPostService:
             raise ServiceError(code="TELEGRAM_EDIT_FAILED", message="Edit caption failed", status_code=502)
         return True
 
-    async def _send_photo_to_main_channel(self, formatted_text: str, picture_file: str, user_id: int) -> bool:
+    async def _send_photo_to_main_channel(self, formatted_text: str, picture_file: str, user_id: int) -> int:
+        """
+        Sends the photo and returns the Message ID immediately.
+        """
         payload = {
             "chat_id": settings.MAIN_CHANNEL_ID,
             "photo": picture_file,
@@ -194,28 +205,33 @@ class UpdateChannelPostService:
         if not result.success:
              logger.error(f"Send Photo Failed: {result.error_message}")
              raise ServiceError(code="TELEGRAM_SEND_FAILED", message="Send photo failed", status_code=502)
-        return True
+        
+        # Extract Message ID directly from the API response
+        try:
+            message_id = result.data["result"]["message_id"]
+            return message_id
+        except (KeyError, TypeError) as e:
+            logger.error(f"Failed to extract message_id from API response for user {user_id}: {e}")
+            raise ServiceError(code="TELEGRAM_API_ERROR", message="Failed to parse message ID", status_code=502)
 
     async def _confirm_group_message(self, user_id: int) -> User:
         """
         Polls DB until group_message_id appears.
-        Includes Session Expiration to ensure we see Webhook updates.
         """
         start_time = datetime.now()
-        timeout_seconds = 20
+        timeout_seconds = 30
         
         while (datetime.now() - start_time).total_seconds() < timeout_seconds:
-            # FIX 1: expire_all is SYNCHRONOUS. Do not await it.
-            # This invalidates the cache so the next 'get_by_id' fetches fresh data from DB.
-            self.db.expire_all()
+            # FIX: We MUST commit to refresh the transaction snapshot.
+            # Without this, we keep reading the same old state from when the request started.
+            await self.db.commit()
             
             user = await self.repo.get_by_id(user_id)
             
             if user:
-                if user.group_message_id is not None:
-                    # Also ensure telegram_message_id is visible, as we need it next
-                    if user.telegram_message_id is not None:
-                        return user
+                # We need both IDs to be present to consider it fully 'confirmed'
+                if user.group_message_id is not None and user.telegram_message_id is not None:
+                    return user
             
             await asyncio.sleep(0.5)
             
@@ -226,22 +242,10 @@ class UpdateChannelPostService:
             status_code=500
         )
 
-    async def _set_public_channel_posts(self, user: User) -> bool:
-        if not user.telegram_message_id:
-             logger.error(f"Cannot set public post: telegram_message_id is None for user {user.user_id}")
-             raise Exception("telegram_message_id missing during public post set")
-
-        logger.info(f"Sending Public Post for User {user.user_id} referencing Msg {user.telegram_message_id}")
-        
-        # 1. Send Post
-        await self._send_user_post_in_public_channel(user.telegram_message_id)
-
-        # 2. Confirm Post
-        await self._confirm_public_group_post(user.user_id)
-        
-        return True
-
     async def _send_user_post_in_public_channel(self, telegram_message_id: int) -> bool:
+        """
+        Sends the public post referencing the main channel ID immediately.
+        """
         payload = {
            "chat_id": settings.PUBLIC_CHANNEL_ID,
            "text": "❗️مشتری جدید\nستاره ها : « ⭐️⭐️⭐️⭐️⭐️ »\nتعداد کنسلی ❌❌❌❌❌",
@@ -257,15 +261,14 @@ class UpdateChannelPostService:
             logger.error(f"Telegram Public Send Failed: {result.error_message}")
             raise Exception(f"Failed to send public post: {result.error_message}")
         
-        logger.info("Public post sent successfully (according to Bot API).")
         return True
 
     async def _confirm_public_group_post(self, user_id: int) -> User:
         start_time = datetime.now()
         timeout = 20
         while (datetime.now() - start_time).total_seconds() < timeout:
-            # FIX 2: expire_all is SYNCHRONOUS. Do not await it.
-            self.db.expire_all()
+            # FIX: Commit to see parallel updates.
+            await self.db.commit()
             
             user = await self.repo.get_by_id(user_id)
             if user and user.public_group_message_id is not None:
@@ -277,9 +280,6 @@ class UpdateChannelPostService:
         raise Exception("Timed out waiting for Public Group Message ID")
 
     async def _update_channel_posts_to_null(self, user_id: int, chat_not_found: bool) -> bool:
-        """
-        Rollback function on failure.
-        """
         logger.warning(f"Executing NULL Rollback for User {user_id}")
         update_data = {
             "telegram_message_id": None,
