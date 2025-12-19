@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# Python / Local Env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Environment Variables (IMPORTANT: Don't bake secrets into the image)
+.env
+
+# Testing/Misc
+pytest_cache
+.DS_Store
