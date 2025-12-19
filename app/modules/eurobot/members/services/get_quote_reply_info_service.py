@@ -1,18 +1,19 @@
-import httpx
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.encoders import jsonable_encoder
 
 # Core & Config
 from app.core.config import settings
 from app.core.exceptions import ServiceError
-from app.models.user import User
 from app.shared.repositories.user_base import UserBaseRepository
 
 # Dependency Service & Request
 from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
 from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
+
+# Local Message Formatter
+from app.modules.eurobot.channels.services.format_messages import create_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class GetQuoteReplyInfoService:
     async def execute(self, user_id: int) -> Dict[str, Any]:
         """
         1. Syncs User with Channel if needed.
-        2. Fetches 'components' from formatter.
+        2. Generates 'components' using local formatter service.
         3. Returns a flattened dictionary containing components + ID fields.
         """
         # 1. Get User
@@ -52,7 +53,7 @@ class GetQuoteReplyInfoService:
                 update_service = UpdateChannelPostService(self.db)
                 payload = UpdateChannelPostRequest(user_id=user_id)
                 updated_user = await update_service.execute(payload)
-                user = updated_user # Refresh user object
+                user = updated_user  # Refresh user object
             except Exception as e:
                 logger.error(f"Failed to update channel post for user {user_id}: {e}")
                 raise ServiceError(
@@ -61,8 +62,8 @@ class GetQuoteReplyInfoService:
                     status_code=500
                 )
 
-        # 4. Fetch Formatter Components
-        components = await self._fetch_formatter_components(user)
+        # 4. Generate Formatter Components (Local Call)
+        components = self._generate_formatter_components(user)
         if not isinstance(components, dict):
             components = {}
 
@@ -75,10 +76,10 @@ class GetQuoteReplyInfoService:
             "channel_id": getattr(settings, "MAIN_CHANNEL_ID", None),
             
             "group_message_id": user.group_message_id,
-            "group_id": getattr(settings, "MAIN_GROUP_ID", None), # Assuming this exists in settings
+            "group_id": getattr(settings, "MAIN_GROUP_ID", None),
             
             "public_group_message_id": user.public_group_message_id,
-            "public_group_id": getattr(settings, "PUBLIC_GROUP_ID", None), # Assuming this exists in settings
+            "public_group_id": getattr(settings, "PUBLIC_GROUP_ID", None),
             
             "public_message_id": user.public_message_id,
             "public_channel_id": getattr(settings, "PUBLIC_CHANNEL_ID", None)
@@ -86,22 +87,24 @@ class GetQuoteReplyInfoService:
 
         return response_data
 
-    async def _fetch_formatter_components(self, user: User) -> Dict[str, Any]:
-        user_data = jsonable_encoder(user, exclude={"password", "token"})
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    settings.FORMATTER_WORKER_URL, 
-                    json=user_data, 
-                    timeout=90
-                )
-                if response.status_code != 200:
-                    raise ServiceError(code="FORMATTER_ERROR", message="Formatter worker failed", status_code=502)
-                
-                try:
-                    data = response.json()
-                    return data.get("components", {})
-                except ValueError:
-                    raise ServiceError(code="FORMATTER_JSON_ERR", message="Invalid JSON from formatter", status_code=502)
-            except httpx.RequestError:
-                raise ServiceError(code="FORMATTER_CONN_ERR", message="Formatter unreachable", status_code=503)
+    def _generate_formatter_components(self, user) -> Dict[str, Any]:
+        """
+        Converts user model to dict and processes it via the local formatting function.
+        Replaces the previous external worker call.
+        """
+        try:
+            # Convert SQLAlchemy model to dict
+            user_data = jsonable_encoder(user, exclude={"password", "token"})
+            
+            # Execute logic synchronously
+            result = create_telegram_message(user_data)
+            
+            return result.get("components", {})
+            
+        except Exception as e:
+            logger.error(f"Error formatting message components locally for user {user.id}: {e}")
+            raise ServiceError(
+                code="FORMATTER_ERROR", 
+                message="Local formatter execution failed", 
+                status_code=500
+            )

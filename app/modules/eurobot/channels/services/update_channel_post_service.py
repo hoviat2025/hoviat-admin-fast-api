@@ -1,8 +1,7 @@
-import httpx
 import logging
 import asyncio
 from datetime import datetime, timezone
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.encoders import jsonable_encoder
@@ -19,6 +18,8 @@ from app.shared.bot_instances import sender_bot, euro_bot
 
 # Service Imports
 from app.modules.eurobot.members.services.profile_service import save_user_profile_to_cloud
+# Formatter Import
+from app.modules.eurobot.channels.services.format_messages import create_telegram_message
 
 # Correct Logger Initialization
 logger = logging.getLogger(__name__)
@@ -52,7 +53,9 @@ class UpdateChannelPostService:
 
     async def _handle_update_flow(self, user: User) -> User:
         logger.info(f"Starting Update Flow for {user.user_id}")
-        formatted_text = await self._main_channel_formatter(user)
+        
+        # Generate formatted text locally
+        formatted_text = self._main_channel_formatter_local(user)
 
         await self._edit_caption_in_main_channel(
             message_id=user.telegram_message_id, 
@@ -72,8 +75,8 @@ class UpdateChannelPostService:
         picture_file, image_path, chat_not_found = await self._process_profile_image(user_id)
         logger.info(f"Profile processed: ImagePath={image_path}, ChatNotFound={chat_not_found}")
 
-        # 2. Formatter
-        formatted_text = await self._main_channel_formatter(user)
+        # 2. Formatter (Local)
+        formatted_text = self._main_channel_formatter_local(user)
 
         try:
             # --- STEP A: Send Main Channel Message ---
@@ -163,21 +166,27 @@ class UpdateChannelPostService:
 
         return picture_file, image_path, chat_not_found
 
-    async def _main_channel_formatter(self, user: User) -> str:
-        user_data = jsonable_encoder(user, exclude={"password", "token"})
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(settings.FORMATTER_WORKER_URL, json=user_data, timeout=10.0)
-                if response.status_code != 200:
-                    raise ServiceError(code="FORMATTER_ERROR", message=f"Worker returned {response.status_code}", status_code=502)
-                
-                try:
-                    data = response.json()
-                    return data.get("text")
-                except:
-                     raise ServiceError(code="FORMATTER_JSON_ERR", message="Invalid JSON", status_code=502)
-            except httpx.RequestError:
-                raise ServiceError(code="FORMATTER_CONN_ERR", message="Unreachable", status_code=503)
+    def _main_channel_formatter_local(self, user: User) -> str:
+        """
+        Replaces external API call with local function execution.
+        """
+        try:
+            # Prepare data
+            user_data = jsonable_encoder(user, exclude={"password", "token"})
+            
+            # Execute logic
+            result = create_telegram_message(user_data)
+            
+            # Extract text
+            return result.get("text")
+        
+        except Exception as e:
+            logger.error(f"Local formatter failed for user {user.user_id}: {e}")
+            raise ServiceError(
+                code="FORMATTER_ERROR", 
+                message="Local message formatting failed", 
+                status_code=500
+            )
 
     async def _edit_caption_in_main_channel(self, message_id: int, formatted_text: str) -> bool:
         payload = {
