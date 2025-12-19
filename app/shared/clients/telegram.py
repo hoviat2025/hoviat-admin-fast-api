@@ -31,7 +31,7 @@ class TelegramSystem:
         # We just connect to the API host.
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
-            timeout=10.0,
+            timeout=90,
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)
         )
 
@@ -92,7 +92,7 @@ class TelegramSystem:
         
         async def _do_get(c):
             try:
-                resp = await c.get(url, timeout=60.0)
+                resp = await c.get(url, timeout=90.0)
                 return resp.content if resp.status_code == 200 else None
             except Exception as e:
                 logger.error(f"Download error: {e}")

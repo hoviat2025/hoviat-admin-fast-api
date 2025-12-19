@@ -268,7 +268,7 @@ class UpdateChannelPostService:
 
     async def _confirm_public_group_post(self, user_id: int) -> User:
         start_time = datetime.now()
-        timeout = 30
+        timeout = 45
         while (datetime.now() - start_time).total_seconds() < timeout:
             # Commit to see parallel updates.
             await self.db.commit()

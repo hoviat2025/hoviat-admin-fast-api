@@ -93,7 +93,7 @@ class GetQuoteReplyInfoService:
                 response = await client.post(
                     settings.FORMATTER_WORKER_URL, 
                     json=user_data, 
-                    timeout=10.0
+                    timeout=90
                 )
                 if response.status_code != 200:
                     raise ServiceError(code="FORMATTER_ERROR", message="Formatter worker failed", status_code=502)
