@@ -1,11 +1,25 @@
 import httpx
 import asyncio
 import logging
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
+from dataclasses import dataclass
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# --- CONFIGURATION ---
+BASE_URL = settings.TELEGRAM_BASE_URL
+PROXY_SECRET = getattr(settings, "PROXY_SECRET", None)
+
+# Spoof a real browser to prevent Cloudflare from "tar-pitting" (hanging) the request
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+}
+
+if PROXY_SECRET:
+    HEADERS["X-My-Proxy-Secret"] = PROXY_SECRET
+
 
 @dataclass
 class TelegramResponse:
@@ -14,108 +28,84 @@ class TelegramResponse:
     data: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
 
-class TelegramSystem:
+
+async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> TelegramResponse:
     """
-    Manages HTTP requests to Telegram's servers via the proxy.
-    Operates statelessly: creates a new connection for every request 
-    to avoid proxy connection drops/timeouts.
+    Bare-metal HTTP POST. 
+    Opens a fresh connection, sends data, closes connection. 
+    Zero pooling.
     """
-    def __init__(self):
-        self.base_url = settings.TELEGRAM_BASE_URL 
-        # Ensure you add PROXY_SECRET to your settings/env if you implement the secure worker
-        self.proxy_secret = getattr(settings, "PROXY_SECRET", None)
+    transport = httpx.AsyncHTTPTransport(retries=2)  # Retry twice on connection drops
 
-    async def _create_client(self) -> httpx.AsyncClient:
-        """
-        Creates a fresh client with automatic retries for network errors.
-        """
-        # transport retries handles the "connection reset" or "peer closed" errors
-        transport = httpx.AsyncHTTPTransport(retries=3)
-        
-        headers = {}
-        if self.proxy_secret:
-            headers["X-My-Proxy-Secret"] = self.proxy_secret
-
-        return httpx.AsyncClient(
-            base_url=self.base_url,
-            timeout=90.0,
-            transport=transport,
-            headers=headers
-        )
-
-    async def _raw_request(self, token: str, endpoint: str, payload: Dict, retry_on_429: bool) -> TelegramResponse:
-        """
-        Executes the request using a fresh client instance.
-        """
-        url = f"/bot{token}/{endpoint}"
-        
-        # Create a new connection for this specific request
-        async with await self._create_client() as client:
-            return await self._execute(client, url, payload, retry_on_429)
-
-    async def _execute(self, client: httpx.AsyncClient, url: str, payload: Dict, retry_on_429: bool):
+    async with httpx.AsyncClient(transport=transport, timeout=25.0, headers=HEADERS) as client:
         try:
-            while True:
-                response = await client.post(url, json=payload)
-                
-                # Success
-                if response.status_code == 200:
-                    return TelegramResponse(success=True, status_code=200, data=response.json())
-                
-                # Rate Limit
-                if response.status_code == 429:
-                    data = response.json()
-                    retry_after = data.get("parameters", {}).get("retry_after", 1)
-                    
-                    if retry_on_429:
-                        logger.warning(f"Telegram Rate Limit. Sleeping {retry_after}s.")
-                        await asyncio.sleep(retry_after)
-                        continue
-                    else:
-                        return TelegramResponse(success=False, status_code=429, data=data, error_message="Rate limit exceeded")
-
-                # Other Errors
-                return TelegramResponse(
-                    success=False, status_code=response.status_code, data=response.json(),
-                    error_message=f"Telegram Error: {response.text}"
-                )
-        except httpx.RequestError as exc:
-            logger.error(f"Network Error: {exc}")
-            return TelegramResponse(success=False, status_code=0, error_message=str(exc))
+            response = await client.post(url, json=payload)
             
-    async def download_file(self, token: str, file_path: str) -> Optional[bytes]:
-        url = f"/file/bot{token}/{file_path}"
-        
-        try:
-            async with await self._create_client() as client:
-                resp = await client.get(url)
-                return resp.content if resp.status_code == 200 else None
+            # 1. Success
+            if response.status_code == 200:
+                return TelegramResponse(success=True, status_code=200, data=response.json())
+
+            # 2. Rate Limit handling
+            if response.status_code == 429:
+                data = response.json()
+                retry_after = data.get("parameters", {}).get("retry_after", 1)
+                
+                if retry_on_429 and retry_after < 30: # Don't sleep if it asks for > 30s
+                    logger.warning(f"Telegram 429. Sleeping {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    # RECURSIVE RETRY (simple way to retry this function)
+                    return await _raw_http_post(url, payload, retry_on_429=False)
+                
+                return TelegramResponse(success=False, status_code=429, data=data, error_message="Rate limit exceeded")
+
+            # 3. Other Errors
+            return TelegramResponse(
+                success=False, 
+                status_code=response.status_code, 
+                error_message=f"HTTP {response.status_code}: {response.text}"
+            )
+
+        except httpx.TimeoutException:
+            logger.error("Telegram Request Timed Out (25s)")
+            return TelegramResponse(success=False, status_code=408, error_message="Request Timed Out")
         except Exception as e:
-            logger.error(f"Download error: {e}")
+            logger.error(f"Telegram Connection Error: {e}")
+            return TelegramResponse(success=False, status_code=0, error_message=str(e))
+
+
+async def _raw_http_get_bytes(url: str) -> Optional[bytes]:
+    """Bare-metal GET for files."""
+    try:
+        async with httpx.AsyncClient(timeout=60.0, headers=HEADERS) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                return resp.content
             return None
-
-
-# The Global Engine Instance
-telegram_system = TelegramSystem()
+    except Exception as e:
+        logger.error(f"File Download Error: {e}")
+        return None
 
 
 class TelegramBot:
     """
-    A specific bot instance. 
-    Lightweight wrapper around the system.
+    Just holds the token. Logic is now in the standalone functions above.
     """
     def __init__(self, token: str):
         self.token = token
-        self.system = telegram_system
 
     async def send_request(self, endpoint: str, payload: Dict[str, Any], retry_on_429: bool = False) -> TelegramResponse:
-        return await self.system._raw_request(self.token, endpoint, payload, retry_on_429)
+        url = f"{BASE_URL}/bot{self.token}/{endpoint}"
+        return await _raw_http_post(url, payload, retry_on_429)
 
     async def get_file_path(self, file_id: str) -> Optional[str]:
+        # Simple wrapper using the same generic sender
         resp = await self.send_request("getFile", {"file_id": file_id})
         if resp.success:
             return resp.data.get("result", {}).get("file_path")
         return None
 
     async def download_file(self, file_path: str) -> Optional[bytes]:
-        return await self.system.download_file(self.token, file_path)
+        url = f"{BASE_URL}/file/bot{self.token}/{file_path}"
+        return await _raw_http_get_bytes(url)
+
+# No more 'telegram_system' instance needed.

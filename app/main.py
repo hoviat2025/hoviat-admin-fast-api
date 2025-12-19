@@ -14,15 +14,13 @@ from app.shared.clients.storage import storage_client
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Startup
-    print("🚀 Starting up... Initializing Clients")
-    # Telegram system is now stateless/on-demand, no start needed
+    print("🚀 Starting up...")
     storage_client.start() 
 
     yield # Application runs here
     
     # 2. Shutdown
-    print("🛑 Shutting down... Closing Clients")
-    # Telegram system is now stateless/on-demand, no stop needed
+    print("🛑 Shutting down...")
     storage_client.stop()
 
 # --- APP SETUP ---
@@ -31,18 +29,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# --- REGISTER MIDDLEWARE (CORS) ---
 register_middleware(app)
-
-# --- REGISTER EXCEPTION HANDLERS ---
 register_exception_handlers(app)
 
-# --- APP MODE LOGIC ---
 mode = settings.APP_MODE
-
 print(f"🚀 Starting App in Mode: {mode}")
 
-# --- MOUNT ROUTERS ---
 if mode == "admin" or mode == "all":
     app.include_router(admin_router, prefix="/api/admin")
 
