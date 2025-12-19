@@ -8,22 +8,21 @@ from app.core.middleware import register_middleware
 from app.modules.admin.router import router as admin_router
 from app.modules.eurobot.router import router as eurobot_router
 
-from app.shared.clients.telegram import telegram_system
 from app.shared.clients.storage import storage_client
 
 # --- LIFESPAN MANAGER ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Startup: Open connections
+    # 1. Startup
     print("🚀 Starting up... Initializing Clients")
-    await telegram_system.start()
+    # Telegram system is now stateless/on-demand, no start needed
     storage_client.start() 
 
     yield # Application runs here
     
-    # 2. Shutdown: Close connections
+    # 2. Shutdown
     print("🛑 Shutting down... Closing Clients")
-    await telegram_system.stop()
+    # Telegram system is now stateless/on-demand, no stop needed
     storage_client.stop()
 
 # --- APP SETUP ---
