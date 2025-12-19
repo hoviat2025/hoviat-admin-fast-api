@@ -219,21 +219,19 @@ class UpdateChannelPostService:
     async def _confirm_group_message(self, user_id: int) -> User:
         """
         Polls DB until group_message_id appears.
+        Uses get_fresh_by_id to bypass SQLAlchemy cache.
         """
         start_time = datetime.now()
         timeout_seconds = 45
         
         while (datetime.now() - start_time).total_seconds() < timeout_seconds:
-            # FIX: We MUST commit to refresh the transaction snapshot.
-            # Without this, we keep reading the same old state from when the request started.
+            # We still commit to refresh the transaction snapshot
             await self.db.commit()
             
-            user = await self.repo.get_by_id(user_id)
+            # USE NEW REPO METHOD: get_fresh_by_id
+            user = await self.repo.get_fresh_by_id(user_id)
             
             if user:
-                # Force refresh from DB to ignore SQLAlchemy Identity Map cache
-                await self.db.refresh(user)
-
                 # We need both IDs to be present to consider it fully 'confirmed'
                 if user.group_message_id is not None and user.telegram_message_id is not None:
                     return user
@@ -272,14 +270,13 @@ class UpdateChannelPostService:
         start_time = datetime.now()
         timeout = 30
         while (datetime.now() - start_time).total_seconds() < timeout:
-            # FIX: Commit to see parallel updates.
+            # Commit to see parallel updates.
             await self.db.commit()
             
-            user = await self.repo.get_by_id(user_id)
+            # USE NEW REPO METHOD: get_fresh_by_id
+            user = await self.repo.get_fresh_by_id(user_id)
+            
             if user:
-                # Force refresh from DB to ignore SQLAlchemy Identity Map cache
-                await self.db.refresh(user)
-                
                 if user.public_group_message_id is not None:
                     logger.info(f"Public Group Message Confirmed: {user.public_group_message_id}")
                     return user

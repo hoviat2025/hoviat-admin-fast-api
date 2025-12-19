@@ -6,7 +6,7 @@ class User(Base):
     __tablename__ = "users_eurobot"
 
     # Primary Key
-    counter = Column(Integer, primary_key=True) 
+    counter = Column(BigInteger, primary_key=True) 
 
     # Identifiers
     user_id = Column(BigInteger, unique=True, nullable=True)

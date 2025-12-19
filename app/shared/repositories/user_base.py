@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, insert
-from sqlalchemy.dialects.postgresql import insert as pg_insert # Required for Upsert
+from sqlalchemy.dialects.postgresql import insert as pg_insert 
 from app.models.user import User
 
 class UserBaseRepository:
@@ -9,6 +9,19 @@ class UserBaseRepository:
 
     async def get_by_id(self, user_id: int) -> User | None:
         stmt = select(User).where(User.user_id == user_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_fresh_by_id(self, user_id: int) -> User | None:
+        """
+        Fetches the user directly from the database, bypassing and overwriting 
+        the session identity map cache. Use this for polling external state changes.
+        """
+        stmt = (
+            select(User)
+            .where(User.user_id == user_id)
+            .execution_options(populate_existing=True)
+        )
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
@@ -31,7 +44,6 @@ class UserBaseRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    # --- NEW METHOD ---
     async def upsert(self, data: dict) -> User:
         """
         Inserts a user, or updates if user_id already exists.
@@ -51,7 +63,6 @@ class UserBaseRepository:
         
         result = await self.db.execute(upsert_stmt)
         return result.scalars().first()
-    # ------------------
 
     async def update(self, user_id: int, update_data: dict) -> User | None:
         if not update_data:
