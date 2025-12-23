@@ -1,0 +1,8 @@
+{
+  "app": "hoviat-fast-api",
+  "port": 8000,
+  "build": {
+    "location": "germany"
+  },
+  "disks": []
+}
