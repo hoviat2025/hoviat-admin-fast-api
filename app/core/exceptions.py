@@ -1,53 +1,63 @@
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException # <--- NEEDED FOR AUTH ERRORS
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import IntegrityError
 
-# 1. Custom Exception
 class ServiceError(Exception):
+    """
+    Base exception for application-specific business logic errors.
+    
+    Attributes:
+        code: A short string identifier for the error (e.g., 'INSUFFICIENT_FUNDS').
+        message: A descriptive error message for the client.
+        status_code: The HTTP status code to return.
+    """
     def __init__(self, code: str, message: str, status_code: int = 400):
         self.code = code
         self.message = message
         self.status_code = status_code
 
-# 2. The Logic
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """
+    Global catch-all for exceptions to ensure a unified JSON response format.
+    Maps internal exceptions to the standard API error schema.
+    """
+    # Default values for unhandled/generic exceptions
     error_code = "INTERNAL_SERVER_ERROR"
     message = str(exc)
     status_code = 500
     
+    # Custom business logic errors
     if isinstance(exc, ServiceError):
         error_code = exc.code
         message = exc.message
         status_code = exc.status_code
 
-    # --- THIS WAS MISSING ---
-    # Catches the 401/403 errors from your Auth dependencies
+    # Standard FastAPI/Starlette HTTP errors (401, 403, 404, etc.)
     elif isinstance(exc, StarletteHTTPException):
-        if exc.status_code == 404:
-            error_code = "NOT_FOUND"
-        elif exc.status_code == 401:
-            error_code = "UNAUTHORIZED"
-        elif exc.status_code == 403:
-            error_code = "FORBIDDEN"
-        else:
-            error_code = "HTTP_ERROR"
-            
-        # Use the detail provided in the raise HTTPException(...)
-        message = exc.detail 
         status_code = exc.status_code
-    # ------------------------
+        message = exc.detail
         
+        # Map common status codes to semantic error strings
+        error_mapping = {
+            404: "NOT_FOUND",
+            401: "UNAUTHORIZED",
+            403: "FORBIDDEN"
+        }
+        error_code = error_mapping.get(exc.status_code, "HTTP_ERROR")
+        
+    # Database integrity violations (e.g., unique constraint failures)
     elif isinstance(exc, IntegrityError):
         error_code = "CONFLICT_OCCURRED"
-        # Keep this as you requested to see exact DB error
+        # Extract the underlying DB error message if available
         message = str(exc.orig) if exc.orig else "Database constraint violation"
         status_code = status.HTTP_409_CONFLICT
         
+    # Pydantic validation errors (invalid request body or parameters)
     elif isinstance(exc, RequestValidationError):
         error_code = "INVALID_INPUT"
-        message = "Invalid parameters" # Keeping this exact as per your request
+        message = "Invalid parameters provided in the request"
         status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
 
     return JSONResponse(
@@ -55,14 +65,20 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "data": {},
             "meta": {},
-            "error": {"code": error_code, "message": message}
+            "error": {
+                "code": error_code, 
+                "message": message
+            }
         }
     )
 
-# 3. The Registrar
 def register_exception_handlers(app: FastAPI):
+    """
+    Attaches standardized exception handlers to the FastAPI application.
+    Handlers are evaluated in order; generic 'Exception' should be registered last.
+    """
     app.add_exception_handler(ServiceError, global_exception_handler)
     app.add_exception_handler(IntegrityError, global_exception_handler)
     app.add_exception_handler(RequestValidationError, global_exception_handler)
-    app.add_exception_handler(StarletteHTTPException, global_exception_handler) # <--- ADD THIS
+    app.add_exception_handler(StarletteHTTPException, global_exception_handler)
     app.add_exception_handler(Exception, global_exception_handler)

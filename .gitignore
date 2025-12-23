@@ -14,7 +14,7 @@ venv/
 env/
 .venv/
 
-# --- IDE Settings (Optional, keeps repo clean) ---
+# --- IDE Settings ---
 .vscode/
 .idea/
 
