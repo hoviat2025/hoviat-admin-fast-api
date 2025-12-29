@@ -24,7 +24,6 @@ class UserFilter(Filter):
     # ==========================================
     
     # --- Exact Matches ---
-    # Use: ?username=alex (Finds exactly "alex")
     username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -35,8 +34,6 @@ class UserFilter(Filter):
     profile_path: Optional[str] = None
 
     # --- Partial Matches (Contains) ---
-    # Use: ?username_contains=alex (Finds "alex", "Alexander", "Malex")
-    # These map to SQLAlchemy ILIKE operations
     username__ilike: Optional[str] = Field(default=None, alias="username_contains")
     first_name__ilike: Optional[str] = Field(default=None, alias="first_name_contains")
     last_name__ilike: Optional[str] = Field(default=None, alias="last_name_contains")
@@ -77,8 +74,9 @@ class UserFilter(Filter):
     score__gte: Optional[int] = Field(default=None, alias="min_score")
     score__lte: Optional[int] = Field(default=None, alias="max_score")
 
-    # Ban Time
+    # Ban Time (Unix Timestamp)
     ban_time__gte: Optional[int] = Field(default=None, alias="min_ban_time")
+    ban_time__lte: Optional[int] = Field(default=None, alias="max_ban_time")
 
     # Join Date (Unix Timestamp - BigInteger)
     join_date__gte: Optional[int] = Field(default=None, alias="joined_after_unix")
@@ -94,7 +92,6 @@ class UserFilter(Filter):
     # ==========================================
     # 5. NULL CHECKS (IS NULL)
     # ==========================================
-    # Use ?no_accounting_code=true to find users with null accounting_code
 
     user_id__isnull: Optional[bool] = Field(default=None, alias="no_user_id")
     accounting_code__isnull: Optional[bool] = Field(default=None, alias="no_accounting_code")
@@ -145,9 +142,7 @@ class UserFilter(Filter):
     )
     def make_partial_match(cls, v: Optional[str]):
         """
-        Only applies to fields with suffix '__ilike'.
         Wraps the input string in % to perform a SQL 'LIKE %value%' search.
-        Exact match fields are NOT touched by this validator.
         """
         if v:
             return f"%{v}%"
