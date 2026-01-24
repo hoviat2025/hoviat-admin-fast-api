@@ -46,5 +46,5 @@ if mode == "eurobot" or mode == "all":
     )
 
 @app.get("/health")
-def health_check():
+async def health_check():  # Added 'async'
     return {"status": "ok", "mode": mode}
