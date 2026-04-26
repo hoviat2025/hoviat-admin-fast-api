@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     BOT_API_TOKEN: str
     SENDER_BOT_TOKEN: str
     EURO_BOT_TOKEN: str
+    HILFEN_BOT_TOKEN: str
     
     # Base endpoint for Telegram Bot API requests
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"

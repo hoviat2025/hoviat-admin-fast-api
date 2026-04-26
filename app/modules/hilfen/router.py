@@ -1,17 +1,21 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-# Initialize the router for the Hilfen module
+from app.modules.hilfen.core.dispatcher import process_telegram_update
+
 router = APIRouter()
 
-# --- MOUNT ROUTERS / ENDPOINTS ---
 
-@router.get("/test")
-async def hilfen_test_endpoint():
+@router.post("/webhook")
+async def telegram_webhook(request: Request):
     """
-    Basic test endpoint to verify the Hilfen module is connected properly.
-    """
-    return {"module": "hilfen", "status": "success", "message": "Hilfen handler is running!"}
+    Telegram webhook endpoint.
 
-# Later, you can import and mount sub-routers here just like in eurobot:
-# from app.modules.hilfen.some_feature.router import router as some_feature_router
-# router.include_router(some_feature_router, prefix="/feature")
+    This endpoint intentionally does NOT initialize a database session.
+    The dispatcher is responsible for creating a DB session only if
+    stateful handlers require it.
+    """
+    update_data = await request.json()
+
+    await process_telegram_update(update_data)
+
+    return {"status": "ok"}
