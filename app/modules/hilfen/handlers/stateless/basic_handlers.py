@@ -16,21 +16,6 @@ class IgnoreBotMessagesHandler(BaseHandler):
         return
 
 
-class StartCommandHandler(BaseHandler):
-    """
-    Handles the /start command.
-    """
-
-    async def match(self, context: dict, db: AsyncSession) -> bool:
-        text = context.get("text") or ""
-        return text.startswith("/start")
-
-    async def handle(self, context: dict, db: AsyncSession) -> None:
-        chat_id = context.get("chat_id")
-
-        await send_message(chat_id, "Welcome to Hilfen!")
-
-
 class SamCommandHandler(BaseHandler):
     """
     Simple test command handler.
@@ -46,5 +31,4 @@ class SamCommandHandler(BaseHandler):
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         chat_id = context.get("chat_id")
-
         await send_message(chat_id, "sung")

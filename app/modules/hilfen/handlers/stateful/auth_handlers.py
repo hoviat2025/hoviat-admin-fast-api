@@ -4,7 +4,36 @@ from app.modules.hilfen.core.base_handler import BaseHandler
 from app.modules.hilfen.repositories.bot_state import BotStateRepository
 from app.modules.hilfen.services.state_service import BotStateService
 from app.modules.hilfen.services.telegram_service import send_message
+from app.modules.hilfen.repositories.user_repository import HilfenUserRepository
 
+
+class StartCommandHandler(BaseHandler):
+    """
+    Handles the `/start` command.
+
+    Logic:
+    - If user exists → greet with first_name.
+    - If user does not exist → greet as stranger.
+    - Does NOT create user.
+    """
+
+    async def match(self, context: dict, db: AsyncSession) -> bool:
+        text = context.get("text") or ""
+        return text.startswith("/start")
+
+    async def handle(self, context: dict, db: AsyncSession) -> None:
+        chat_id = context.get("chat_id")
+        user_id = context.get("user_id")
+
+        repo = HilfenUserRepository(db)
+
+        user = await repo.get_by_id(user_id)
+
+        if user:
+            greeting_name = user.first_name or "there"
+            await send_message(chat_id, f"Hi {greeting_name}!")
+        else:
+            await send_message(chat_id, "Hello stranger! Use /register to create an account.")
 
 class EmailInputHandler(BaseHandler):
     """
@@ -27,13 +56,6 @@ class EmailInputHandler(BaseHandler):
 
         if "@" in email:
             await state_service.update_user_state(user_id, "waiting_for_password")
-
-            await send_message(
-                chat_id,
-                "Email saved. Send password.",
-            )
+            await send_message(chat_id, "Email saved. Send password.")
         else:
-            await send_message(
-                chat_id,
-                "Invalid email. Try again.",
-            )
+            await send_message(chat_id, "Invalid email. Try again.")
