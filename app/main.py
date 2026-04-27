@@ -1,5 +1,9 @@
+import logging
+import logging.config
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import register_middleware
@@ -12,18 +16,29 @@ from app.modules.hilfen.router import router as hilfen_router
 # --- SHARED CLIENTS ---
 from app.shared.clients.storage import storage_client
 
+
+# -------------------------------
+#  LOAD LOGGING CONFIGURATION
+# -------------------------------
+logging_config_path = os.path.join(os.path.dirname(__file__), "logging.ini")
+
+if os.path.exists(logging_config_path):
+    logging.config.fileConfig(logging_config_path, disable_existing_loggers=False)
+else:
+    print("WARNING: logging.ini not found. Using default logging.")
+
+
 # --- LIFESPAN MANAGER ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize shared connections and background tasks on application startup
     print("🚀 Starting up...")
     storage_client.start() 
 
-    yield # Application handles requests during this phase
+    yield
     
-    # Gracefully close connections and clean up resources on application shutdown
     print("🛑 Shutting down...")
     storage_client.stop()
+
 
 # --- APPLICATION FACTORY ---
 app = FastAPI(
@@ -38,6 +53,7 @@ register_exception_handlers(app)
 # --- ROUTER MOUNTING ---
 # The application runs in different modes (admin, eurobot, hilfen, or all) based on environment configuration.
 # Only the routers required for the active mode are mounted to save resources and restrict endpoints.
+
 mode = settings.APP_MODE
 print(f"🚀 Starting App in Mode: {mode}")
 
@@ -65,5 +81,4 @@ if mode in ("hilfen", "all"):
 # --- GLOBAL ENDPOINTS ---
 @app.get("/health", tags=["System"])
 async def health_check():
-    """Provides a basic health check and exposes the current running mode."""
     return {"status": "ok", "mode": mode}
