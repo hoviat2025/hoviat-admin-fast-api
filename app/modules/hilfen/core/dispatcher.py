@@ -1,3 +1,4 @@
+# app/modules/hilfen/core/dispatcher.py
 import json
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,13 +12,13 @@ from app.modules.hilfen.handlers.registry import (
 from app.modules.hilfen.repositories.bot_state import BotStateRepository
 from app.modules.hilfen.services.state_service import BotStateService
 
-# Debug logger for raw Telegram updates
 debug_logger = logging.getLogger("telegram.update.debug")
+logger = logging.getLogger(__name__)
 
 
 async def process_telegram_update(update: dict) -> None:
     """
-    Main Telegram update dispatcher with lazy DB initialization.
+    Main Telegram update dispatcher with transaction management.
 
     Pipeline:
         1. Print the incoming Telegram update (debug tool).
@@ -27,9 +28,10 @@ async def process_telegram_update(update: dict) -> None:
               - Open DB session
               - Load user state
               - Execute stateful handlers
+              - Commit on success / Rollback on error
     """
 
-    # --- 1) PRINT RAW TELEGRAM UPDATE (debugging trick) ---
+    # --- 1) PRINT RAW TELEGRAM UPDATE ---
     try:
         pretty_json = json.dumps(update, indent=2, ensure_ascii=False)
         debug_logger.info("Incoming Telegram update:\n%s", pretty_json)
@@ -48,19 +50,26 @@ async def process_telegram_update(update: dict) -> None:
             await handler.handle(context, None)
             return
 
-    # --- 4) STATEFUL HANDLERS (REQUIRES DB SESSION) ---
+    # --- 4) STATEFUL HANDLERS (WITH TRANSACTION MANAGEMENT) ---
     user_id = context.get("user_id")
 
     if not user_id:
         return
 
-    async with AsyncSessionLocal() as db:  # type AsyncSession
-        repo = BotStateRepository(db)
-        state_service = BotStateService(repo)
+    async with AsyncSessionLocal() as db:
+        try:
+            repo = BotStateRepository(db)
+            state_service = BotStateService(repo)
 
-        context["user_state"] = await state_service.fetch_user_state(user_id)
+            context["user_state"] = await state_service.fetch_user_state(user_id)
 
-        for handler in STATEFUL_HANDLERS:
-            if await handler.match(context, db):
-                await handler.handle(context, db)
-                return
+            for handler in STATEFUL_HANDLERS:
+                if await handler.match(context, db):
+                    await handler.handle(context, db)
+                    await db.commit()  # Commit after successful handler execution
+                    return
+
+        except Exception as e:
+            await db.rollback()  # Rollback on any error
+            logger.error(f"Error processing update for user {user_id}: {e}", exc_info=True)
+            # Optionally send error message to user here
