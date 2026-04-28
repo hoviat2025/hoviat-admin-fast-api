@@ -1,3 +1,4 @@
+# app\modules\hilfen\handlers\registry.py
 """
 Central handler registry.
 
@@ -19,12 +20,21 @@ from app.modules.hilfen.handlers.stateful.auth_handlers import (
     EmailInputHandler,
 )
 
+from app.modules.hilfen.handlers.stateful.registration_handlers import (
+    FirstNameRegistrationHandler,
+    LastNameRegistrationHandler,
+)
+
 STATELESS_HANDLERS = [
     IgnoreBotMessagesHandler(),
     SamCommandHandler(),
 ]
 
 STATEFUL_HANDLERS = [
+    # Registration handlers first (they check for specific states)
+    FirstNameRegistrationHandler(),
+    LastNameRegistrationHandler(),
+    # Then general commands (like /start)
     StartCommandHandler(),
     EmailInputHandler(),
 ]

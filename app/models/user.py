@@ -47,3 +47,6 @@ class User(Base):
     # Timestamps
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     channel_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    # Hilfen
+    hilfen_state = Column(String, nullable=True) 
