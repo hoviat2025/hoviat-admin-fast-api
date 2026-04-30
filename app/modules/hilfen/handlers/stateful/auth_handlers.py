@@ -48,12 +48,19 @@ class StartCommandHandler(BaseHandler):
 
         # User doesn't exist - start registration
         try:
+            # Build nickname from first_name and last_name
+            nickname_parts = []
+            if first_name:
+                nickname_parts.append(first_name)
+            if last_name:
+                nickname_parts.append(last_name)
+            nickname = " ".join(nickname_parts) if nickname_parts else username
+
             # Create user with Telegram profile data
             await user_repo.create_user(
                 user_id=user_id,
                 username=username,
-                first_name=first_name,
-                last_name=last_name
+                nickname=nickname
             )
             
             # Set state to ask for country

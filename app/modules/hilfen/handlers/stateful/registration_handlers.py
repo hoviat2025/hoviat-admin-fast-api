@@ -154,12 +154,12 @@ class LastNameRegistrationHandler(BaseHandler):
             # Update user's last name
             await user_repo.update_last_name(user_id, last_name)
             
-            # Get user to update nickname
-            user = await user_repo.get_by_id(user_id)
-            if user:
-                # Update nickname: first_name + " " + last_name
-                nickname = f"{user.first_name or ''} {last_name}".strip()
-                await user_repo.update_nickname(user_id, nickname)
+            # # Get user to update nickname
+            # user = await user_repo.get_by_id(user_id)
+            # if user:
+            #     # Update nickname: first_name + " " + last_name
+            #     nickname = f"{user.first_name or ''} {last_name}".strip()
+            #     await user_repo.update_nickname(user_id, nickname)
 
             # Update state to ask for phone number
             state_repo = BotStateRepository(db)
