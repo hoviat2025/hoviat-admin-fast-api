@@ -12,10 +12,13 @@ class StartCommandHandler(BaseHandler):
     """
     Handles the `/start` command.
 
-    Enhanced behavior with state-based registration:
-    - If user exists and has first name: greet them
-    - If user exists but has no first name: start registration flow
-    - If user doesn't exist: create user and start registration flow
+    Registration flow:
+    1. Check if user exists in database (users_eurobot table)
+    2. If user exists: do nothing (registration already complete)
+    3. If user doesn't exist: 
+       - Create user with username and nickname from Telegram profile
+       - Set state to 'waiting_for_country'
+       - Ask for country
     """
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
@@ -25,78 +28,44 @@ class StartCommandHandler(BaseHandler):
     async def handle(self, context: dict, db: AsyncSession) -> None:
         chat_id = context.get("chat_id")
         user_id = context.get("user_id")
+        username = context.get("username")
+        first_name = context.get("first_name")
+        last_name = context.get("last_name")
 
         user_repo = HilfenUserRepository(db)
         state_repo = BotStateRepository(db)
         state_service = BotStateService(state_repo)
 
+        # Check if user exists in database
         user = await user_repo.get_by_id(user_id)
 
         if user:
-            # Check if user has a first name
-            if not user.first_name or user.first_name.strip() == "":
-                # User exists but doesn't have a first name, start registration
-                await state_service.update_user_state(user_id, "waiting_for_first_name")
-                await db.commit()
-                await send_message(chat_id, "Welcome back! It looks like we don't have your name yet. What's your first name?")
-            else:
-                # User exists and has a first name
-                greeting_name = user.first_name or "there"
-                await send_message(chat_id, f"Hi {greeting_name}! Welcome back!")
+            # User exists - registration already complete
+            # Optionally send a welcome message
+            greeting_name = user.first_name or "there"
+            await send_message(chat_id, f"Hi {greeting_name}! Welcome back!")
             return
 
-        # User doesn't exist - create minimal record
-        create_data = {
-            "counter": user_id,
-            "user_id": user_id,
-        }
-
+        # User doesn't exist - start registration
         try:
-            await user_repo.create(create_data)
+            # Create user with Telegram profile data
+            await user_repo.create_user(
+                user_id=user_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name
+            )
             
-            # Set state to ask for first name
-            await state_service.update_user_state(user_id, "waiting_for_first_name")
+            # Set state to ask for country
+            await state_service.update_user_state(user_id, "waiting_for_country")
             
             await db.commit()
-        except Exception:
+            
+            # Ask for country
+            await send_message(chat_id, "Welcome! Please enter your country:")
+            
+        except Exception as e:
             await db.rollback()
+            # Log error and send generic message to user
+            await send_message(chat_id, "Sorry, something went wrong. Please try again.")
             raise
-
-        await send_message(chat_id, "Welcome! Let's get you registered. What's your first name?")
-
-
-
-
-class EmailInputHandler(BaseHandler):
-    """
-    Handles email input when the user is in the `waiting_for_email` state.
-
-    The handler performs minimal validation, updates the user state, and commits
-    the state transition when the input is acceptable.
-    """
-
-    async def match(self, context: dict, db: AsyncSession) -> bool:
-        return (
-            context.get("user_state") == "waiting_for_email"
-            and context.get("update_type") == "message"
-        )
-
-    async def handle(self, context: dict, db: AsyncSession) -> None:
-        chat_id = context.get("chat_id")
-        user_id = context.get("user_id")
-        email = context.get("text") or ""
-
-        repo = BotStateRepository(db)
-        state_service = BotStateService(repo)
-
-        if "@" in email:
-            try:
-                await state_service.update_user_state(user_id, "waiting_for_password")
-                await db.commit()
-            except Exception:
-                await db.rollback()
-                raise
-
-            await send_message(chat_id, "Email saved. Send password.")
-        else:
-            await send_message(chat_id, "Invalid email. Try again.")

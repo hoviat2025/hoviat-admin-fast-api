@@ -8,6 +8,14 @@ in the correct order.
 Handlers are executed in the following order:
 1. Stateless handlers (no database access)
 2. Stateful handlers (database session provided)
+
+Registration flow order:
+1. Country input (waiting_for_country)
+2. First name input (waiting_for_first_name)  
+3. Last name input (waiting_for_last_name)
+4. Phone contact (waiting_for_phone)
+5. Invalid phone input handler (text when expecting contact)
+6. Start command (initiates registration)
 """
 
 from app.modules.hilfen.handlers.stateless.basic_handlers import (
@@ -17,12 +25,14 @@ from app.modules.hilfen.handlers.stateless.basic_handlers import (
 
 from app.modules.hilfen.handlers.stateful.auth_handlers import (
     StartCommandHandler,
-    EmailInputHandler,
 )
 
 from app.modules.hilfen.handlers.stateful.registration_handlers import (
+    CountryRegistrationHandler,
     FirstNameRegistrationHandler,
     LastNameRegistrationHandler,
+    PhoneRegistrationHandler,
+    InvalidPhoneInputHandler,
 )
 
 STATELESS_HANDLERS = [
@@ -31,10 +41,13 @@ STATELESS_HANDLERS = [
 ]
 
 STATEFUL_HANDLERS = [
-    # Registration handlers first (they check for specific states)
+    # Registration handlers in order of state progression
+    CountryRegistrationHandler(),
     FirstNameRegistrationHandler(),
     LastNameRegistrationHandler(),
-    # Then general commands (like /start)
+    PhoneRegistrationHandler(),
+    InvalidPhoneInputHandler(),
+    
+    # General commands (like /start) - processed last
     StartCommandHandler(),
-    EmailInputHandler(),
 ]

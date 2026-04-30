@@ -8,7 +8,7 @@ independently in the future.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update
+from sqlalchemy import update, select
 from app.shared.repositories.user_base import UserBaseRepository
 
 
@@ -24,12 +24,78 @@ class HilfenUserRepository(UserBaseRepository):
     def __init__(self, db: AsyncSession):
         super().__init__(db)
 
+    async def get_by_id(self, user_id: int):
+        """Get user by Telegram user_id."""
+        stmt = select(self.model).where(self.model.user_id == user_id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_user(self, user_id: int, username: str, first_name: str, last_name: str) -> None:
+        """
+        Create a new user with minimal required fields.
+        
+        Args:
+            user_id: Telegram user ID
+            username: Telegram username (can be None)
+            first_name: Telegram first name
+            last_name: Telegram last name
+        """
+        # Create nickname from first_name + " " + last_name
+        nickname = f"{first_name or ''} {last_name or ''}".strip()
+        
+        create_data = {
+            "user_id": user_id,
+            "username": username,
+            "first_name": first_name,
+            "last_name": last_name,
+            "nickname": nickname if nickname else None,
+            "counter": user_id,  # Using user_id as counter for simplicity
+        }
+        
+        await self.create(create_data)
+
     async def update_first_name(self, user_id: int, first_name: str) -> None:
         """Update user's first name."""
         stmt = (
             update(self.model)
             .where(self.model.user_id == user_id)
             .values(first_name=first_name)
+        )
+        await self.db.execute(stmt)
+
+    async def update_last_name(self, user_id: int, last_name: str) -> None:
+        """Update user's last name."""
+        stmt = (
+            update(self.model)
+            .where(self.model.user_id == user_id)
+            .values(last_name=last_name)
+        )
+        await self.db.execute(stmt)
+
+    async def update_country(self, user_id: int, country: str) -> None:
+        """Update user's country."""
+        stmt = (
+            update(self.model)
+            .where(self.model.user_id == user_id)
+            .values(country=country)
+        )
+        await self.db.execute(stmt)
+
+    async def update_phone_number(self, user_id: int, phone_number: str) -> None:
+        """Update user's phone number."""
+        stmt = (
+            update(self.model)
+            .where(self.model.user_id == user_id)
+            .values(phone_number=phone_number)
+        )
+        await self.db.execute(stmt)
+
+    async def update_nickname(self, user_id: int, nickname: str) -> None:
+        """Update user's nickname."""
+        stmt = (
+            update(self.model)
+            .where(self.model.user_id == user_id)
+            .values(nickname=nickname)
         )
         await self.db.execute(stmt)
 

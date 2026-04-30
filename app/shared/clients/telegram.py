@@ -12,7 +12,7 @@ BASE_URL = settings.TELEGRAM_BASE_URL
 PROXY_SECRET = getattr(settings, "PROXY_SECRET", None)
 
 # Request headers configured to mimic standard browser signatures.
-# This reduces the likelihood of requests being intercepted or throttled by 
+# This reduces the likelihood of requests being intercepted or throttled by
 # intermediate security layers (e.g., Cloudflare).
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -36,10 +36,10 @@ class TelegramResponse:
 
 async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> TelegramResponse:
     """
-    Executes an atomic HTTP POST request. 
-    
-    This helper uses a short-lived client instance for each call. While less 
-    performant than connection pooling, it ensures maximum isolation and 
+    Executes an atomic HTTP POST request.
+   
+    This helper uses a short-lived client instance for each call. While less
+    performant than connection pooling, it ensures maximum isolation and
     prevents stale connection issues in long-running tasks.
     """
     # Configure transport with basic retry logic for network-level failures
@@ -48,35 +48,46 @@ async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> 
     async with httpx.AsyncClient(transport=transport, timeout=250.0, headers=HEADERS) as client:
         try:
             response = await client.post(url, json=payload)
-            
+
             # Successful request handling
             if response.status_code == 200:
-                return TelegramResponse(success=True, status_code=200, data=response.json())
+                try:
+                    data = response.json()
+                except Exception as json_err:
+                    # Log the raw body so we can immediately see what was received.
+                    logger.error(
+                        "JSON decode failed for 200 response. "
+                        f"Raw body (first 500 chars): {response.text[:500]!r}"
+                    )
+                    raise json_err
+                return TelegramResponse(success=True, status_code=200, data=data)
 
             # Rate limit handling (HTTP 429)
             if response.status_code == 429:
-                data = response.json()
+                try:
+                    data = response.json()
+                except Exception:
+                    data = {}
                 retry_after = data.get("parameters", {}).get("retry_after", 10)
-                
-                # Only attempt a recursive retry if the wait time is below a 30s threshold
+
+                # Only attempt a recursive retry if the wait time is below a 300-second threshold
                 if retry_on_429 and retry_after < 300:
                     logger.warning(f"Rate limited by Telegram. Retrying after {retry_after}s...")
                     await asyncio.sleep(retry_after)
-                    
                     # Execute a single recursive retry attempt
                     return await _raw_http_post(url, payload, retry_on_429=False)
-                
+
                 return TelegramResponse(
-                    success=False, 
-                    status_code=429, 
-                    data=data, 
+                    success=False,
+                    status_code=429,
+                    data=data,
                     error_message="Rate limit exceeded"
                 )
 
             # Handle non-200/429 status codes
             return TelegramResponse(
-                success=False, 
-                status_code=response.status_code, 
+                success=False,
+                status_code=response.status_code,
                 error_message=f"HTTP {response.status_code}: {response.text}"
             )
 
@@ -84,6 +95,7 @@ async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> 
             logger.error("Request to Telegram timed out after 25 seconds.")
             return TelegramResponse(success=False, status_code=408, error_message="Request Timed Out")
         except Exception as e:
+            # Any other exception (including JSON decode) will be logged here.
             logger.error(f"Unexpected connection error during Telegram communication: {e}")
             return TelegramResponse(success=False, status_code=0, error_message=str(e))
 
