@@ -5,13 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.modules.hilfen.core.context_extractor import extract_context
+from app.modules.hilfen.core.scenarios import is_user_message_in_private
 from app.modules.hilfen.handlers.registry import (
     STATELESS_HANDLERS,
     STATEFUL_HANDLERS,
-    FALLBACK_HANDLERS,  
+    FALLBACK_HANDLERS,
 )
 from app.modules.hilfen.repositories.bot_state import BotStateRepository
 from app.modules.hilfen.services.state_service import BotStateService
+from app.modules.hilfen.services.registration_service import ensure_registration_progress
 
 debug_logger = logging.getLogger("telegram.update.debug")
 logger = logging.getLogger(__name__)
@@ -28,6 +30,7 @@ async def process_telegram_update(update: dict) -> None:
         4. If none match:
               - Open DB session
               - Load user state
+              - REGISTRATION CHECKPOINT – send missing-field prompts in private chats
               - Execute stateful handlers
               - Commit on success / Rollback on error
         5. If still no handler matched, execute fallback handlers
@@ -57,41 +60,59 @@ async def process_telegram_update(update: dict) -> None:
     user_id = context.get("user_id")
 
     if not user_id:
-        # No user_id means we can't load state, but we might still want
-        # to check fallback handlers (e.g., for anonymous channel posts)
+        # No user_id means we can't load state; fall through to fallback handlers.
         pass
     else:
         async with AsyncSessionLocal() as db:
             try:
                 repo = BotStateRepository(db)
                 state_service = BotStateService(repo)
-
                 context["user_state"] = await state_service.fetch_user_state(user_id)
+
+                # ---------- REGISTRATION CHECKPOINT ----------
+                # Only intervene for direct user messages in private chats.
+                # The checkpoint will prompt for the next missing field.
+                if (
+                    is_user_message_in_private(context)
+                    and context["update_type"] == "message"
+                ):
+                    registration_handled = await ensure_registration_progress(
+                        db=db,
+                        user_id=user_id,
+                        chat_id=context["chat_id"],
+                        username=context.get("username"),
+                        telegram_first_name=context.get("first_name"),
+                        telegram_last_name=context.get("last_name"),
+                        user_state=context["user_state"],
+                    )
+                    if registration_handled:
+                        return   # Prompt sent, stop processing this update
+                # ---------------------------------------------
 
                 for handler in STATEFUL_HANDLERS:
                     if await handler.match(context, db):
                         await handler.handle(context, db)
-                        await db.commit()  # Commit after successful handler execution
+                        await db.commit()
                         return
 
-                # If we reach here, no stateful handler matched
-                # Continue to fallback handlers below
-                
+                # If we reach here, no stateful handler matched.
+                # Continue to fallback handlers below.
+
             except Exception as e:
-                await db.rollback()  # Rollback on any error
-                logger.error(f"Error processing update for user {user_id}: {e}", exc_info=True)
-                # Don't return here - we might still want to run fallback handlers
-                # for error cases
+                await db.rollback()
+                logger.error(
+                    f"Error processing update for user {user_id}: {e}",
+                    exc_info=True,
+                )
+                # Don't return – fallback handlers may still be appropriate.
 
     # --- 5) FALLBACK HANDLERS (NO DB SESSION) ---
-    # These run ONLY if no regular handler matched
     for handler in FALLBACK_HANDLERS:
         if await handler.match(context, None):
             await handler.handle(context, None)
             return
 
     # --- 6) NO HANDLER MATCHED ---
-    # If we reach here, no handler (stateless, stateful, or fallback) matched.
-    # This is expected for many update types (e.g., group messages,
-    # channel posts, or messages that don't require a response).
-    debug_logger.debug(f"No handler matched update type: {context['update_type']}")
+    debug_logger.debug(
+        f"No handler matched update type: {context['update_type']}"
+    )
