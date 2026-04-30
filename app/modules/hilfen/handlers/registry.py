@@ -8,6 +8,7 @@ in the correct order.
 Handlers are executed in the following order:
 1. Stateless handlers (no database access)
 2. Stateful handlers (database session provided)
+3. Fallback handlers (run only if no other handler matched)
 
 Registration flow order:
 1. Country input (waiting_for_country)
@@ -16,11 +17,16 @@ Registration flow order:
 4. Phone contact (waiting_for_phone)
 5. Invalid phone input handler (text when expecting contact)
 6. Start command (initiates registration)
+7. Unhandled private message fallback (LAST - catches everything else)
 """
 
 from app.modules.hilfen.handlers.stateless.basic_handlers import (
     IgnoreBotMessagesHandler,
     SamCommandHandler,
+)
+
+from app.modules.hilfen.handlers.stateless.fallback_handlers import (
+    UnhandledPrivateMessageHandler,
 )
 
 from app.modules.hilfen.handlers.stateful.auth_handlers import (
@@ -35,6 +41,7 @@ from app.modules.hilfen.handlers.stateful.registration_handlers import (
     InvalidPhoneInputHandler,
 )
 
+# Regular handlers - checked first
 STATELESS_HANDLERS = [
     IgnoreBotMessagesHandler(),
     SamCommandHandler(),
@@ -50,4 +57,9 @@ STATEFUL_HANDLERS = [
     
     # General commands (like /start) - processed last
     StartCommandHandler(),
+]
+
+# Fallback handlers - checked ONLY if no regular handler matched
+FALLBACK_HANDLERS = [
+    UnhandledPrivateMessageHandler(),
 ]
