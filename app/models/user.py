@@ -42,7 +42,9 @@ class User(Base):
     telegram_message_id = Column(String, nullable=True)
     group_message_id = Column(String, nullable=True)
     public_message_id = Column(String, nullable=True)
-    public_group_message_id = Column(String, nullable=True)
+    public_group_message_id = Column(String, nullable=True)    
+    hilfen_message_id = Column(String, nullable=True)
+    hilfen_group_message_id = Column(String, nullable=True)
 
     # Timestamps
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)

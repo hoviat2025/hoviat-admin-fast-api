@@ -10,7 +10,8 @@ class TelegramMessageRepository:
         """
         Inserts a row, or if telegram_message_id exists, ONLY updates 
         user_id and group_message_id. 
-        public_message_id and public_group_message_id remain untouched.
+        public_message_id, public_group_message_id, hilfen_message_id, 
+        and hilfen_group_message_id remain untouched.
         """
         # 1. Prepare the data to be inserted
         data = {
@@ -38,7 +39,7 @@ class TelegramMessageRepository:
         """
         Inserts a row, or if telegram_message_id exists, ONLY updates 
         public_message_id and public_group_message_id.
-        user_id and group_message_id remain untouched.
+        user_id, group_message_id, hilfen_message_id, and hilfen_group_message_id remain untouched.
         """
         # 1. Prepare the data to be inserted
         data = {
@@ -56,6 +57,34 @@ class TelegramMessageRepository:
             set_={
                 "public_message_id": stmt.excluded.public_message_id,
                 "public_group_message_id": stmt.excluded.public_group_message_id
+            }
+        ).returning(TelegramMessage)
+
+        result = await self.db.execute(upsert_stmt)
+        return result.scalars().first()
+
+    async def upsert_hilfen_mapping(self, telegram_message_id: int, hilfen_message_id: int, hilfen_group_message_id: int) -> TelegramMessage:
+        """
+        Inserts a row, or if telegram_message_id exists, ONLY updates 
+        hilfen_message_id and hilfen_group_message_id.
+        user_id, group_message_id, public_message_id, and public_group_message_id remain untouched.
+        """
+        # 1. Prepare the data to be inserted
+        data = {
+            "telegram_message_id": telegram_message_id,
+            "hilfen_message_id": hilfen_message_id,
+            "hilfen_group_message_id": hilfen_group_message_id
+        }
+
+        # 2. Create the Insert Statement
+        stmt = pg_insert(TelegramMessage).values(**data)
+
+        # 3. Handle Conflict (Update only specific fields)
+        upsert_stmt = stmt.on_conflict_do_update(
+            index_elements=['telegram_message_id'], # The PK to check
+            set_={
+                "hilfen_message_id": stmt.excluded.hilfen_message_id,
+                "hilfen_group_message_id": stmt.excluded.hilfen_group_message_id
             }
         ).returning(TelegramMessage)
 

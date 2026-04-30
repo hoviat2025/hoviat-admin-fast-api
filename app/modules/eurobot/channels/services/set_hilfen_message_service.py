@@ -1,34 +1,38 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.core.exceptions import ServiceError
-from app.modules.eurobot.channels.schemas.set_public_message_request import SetPublicMessageRequest
+from app.modules.eurobot.channels.schemas.set_hilfen_message_request import SetHilfenMessageRequest
 
 # Import the specific repositories
 from app.modules.eurobot.channels.repositories.stage_message_ids import TelegramMessageRepository
 from app.modules.eurobot.channels.repositories.users import UserMessageUpdateRepository
 
-class SetPublicMessageService:
+class SetHilfenMessageService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.stage_repo = TelegramMessageRepository(db)
         self.user_repo = UserMessageUpdateRepository(db)
 
-    async def execute(self, payload: SetPublicMessageRequest) -> User:
+    async def execute(self, payload: SetHilfenMessageRequest) -> User:
+        """
+        Updates the staging table with hilfen message mapping. 
+        If the staging table becomes complete (has all 6 IDs), it updates the main User table.
+        """
         # 1. Extract IDs and Prepare for Staging (Integers)
         # The ID to search for (The Main Channel Message ID acts as the PK)
         lookup_msg_id_int = int(payload.original_update.message.external_reply.message_id)
         
-        # The IDs to update (The Public Channel IDs)
-        public_msg_id_int = int(payload.original_update.message.forward_origin.message_id)
-        public_group_msg_id_int = int(payload.original_update.message.message_id)
+        # The IDs to update (The Hilfen Channel IDs)
+        hilfen_msg_id_int = int(payload.original_update.message.forward_origin.message_id)
+        hilfen_group_msg_id_int = int(payload.original_update.message.message_id)
 
         # 2. Upsert into Staging Table
-        # This updates the 'Public' side of the equation.
+        # This updates the 'Hilfen' side of the equation.
         # If the row doesn't exist, it creates it. If it exists, it updates these columns.
-        staging_row = await self.stage_repo.upsert_public_mapping(
+        staging_row = await self.stage_repo.upsert_hilfen_mapping(
             telegram_message_id=lookup_msg_id_int,
-            public_message_id=public_msg_id_int,
-            public_group_message_id=public_group_msg_id_int
+            hilfen_message_id=hilfen_msg_id_int,
+            hilfen_group_message_id=hilfen_group_msg_id_int
         )
 
         # 3. Check for Completeness (All 6 columns must be populated)
@@ -43,7 +47,7 @@ class SetPublicMessageService:
         )
 
         if not is_staging_complete:
-            # We have successfully staged the public IDs, but we can't update the User table
+            # We have successfully staged the hilfen IDs, but we can't update the User table
             # or return a User object because the staging row isn't complete yet.
             await self.db.commit() # Commit the staging data so it's ready for the other services
             raise ServiceError(
@@ -72,6 +76,6 @@ class SetPublicMessageService:
             return updated_user
 
         # If we didn't update (because fields were already set by a parallel process),
-        # or if we just staged data, we return the existing user state.
+        # we return the existing user state.
         existing_user = await self.user_repo.get_by_id(staging_row.user_id)
         return existing_user

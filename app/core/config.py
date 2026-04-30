@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     MAIN_GROUP_ID: str
     PUBLIC_CHANNEL_ID: str 
     PUBLIC_GROUP_ID: str
+    HILFEN_CHANNEL_ID: str 
+    HILFEN_GROUP_ID: str
     
     # Internal service URL for the formatting worker
     FORMATTER_WORKER_URL: str

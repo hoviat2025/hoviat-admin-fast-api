@@ -11,10 +11,12 @@ class UserMessageUpdateRepository(UserBaseRepository):
         telegram_message_id: str, 
         group_message_id: str,
         public_message_id: str,
-        public_group_message_id: str
+        public_group_message_id: str,
+        hilfen_message_id: str,
+        hilfen_group_message_id: str
     ) -> User | None:
         """
-        Updates ALL 4 message IDs for a user ONLY IF they are currently NULL.
+        Updates ALL 6 message IDs for a user ONLY IF they are currently NULL.
         Returns the updated User object if successful.
         Returns None if the user didn't exist OR if the fields were not empty.
         """
@@ -25,12 +27,15 @@ class UserMessageUpdateRepository(UserBaseRepository):
             # We check if the main IDs are NULL to ensure we don't overwrite existing data.
             .where(User.telegram_message_id.is_(None))
             .where(User.public_message_id.is_(None))
+            .where(User.hilfen_message_id.is_(None))
             # ------------------------------
             .values(
                 telegram_message_id=telegram_message_id,
                 group_message_id=group_message_id,
                 public_message_id=public_message_id,
-                public_group_message_id=public_group_message_id
+                public_group_message_id=public_group_message_id,
+                hilfen_message_id=hilfen_message_id,
+                hilfen_group_message_id=hilfen_group_message_id
             )
             .returning(User)
         )

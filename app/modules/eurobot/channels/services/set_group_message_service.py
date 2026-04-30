@@ -16,7 +16,7 @@ class SetGroupMessageService:
     async def execute(self, payload: SetGroupMessageRequest) -> User:
         """
         Updates the staging table with user mapping. 
-        If the staging table becomes complete (has public IDs), it updates the main User table.
+        If the staging table becomes complete (has all 6 IDs), it updates the main User table.
         """
         user_id = payload.extracted_user_id
         
@@ -34,10 +34,14 @@ class SetGroupMessageService:
         )
 
         # 3. Check for Completeness
-        # We check if the 'Public' side of the data has already arrived via a parallel process.
+        # We need to check all 6 columns to ensure the staging row is complete
         is_staging_complete = (
-            staging_row.public_message_id is not None and 
-            staging_row.public_group_message_id is not None
+            staging_row.user_id is not None and
+            staging_row.group_message_id is not None and
+            staging_row.public_message_id is not None and
+            staging_row.public_group_message_id is not None and
+            staging_row.hilfen_message_id is not None and
+            staging_row.hilfen_group_message_id is not None
         )
 
         updated_user = None
@@ -49,9 +53,11 @@ class SetGroupMessageService:
             updated_user = await self.user_repo.set_message_ids_if_empty(
                 user_id=user_id,
                 telegram_message_id=str(telegram_msg_id_int),
-                group_message_id=str(group_msg_id_int),
+                group_message_id=str(staging_row.group_message_id),
                 public_message_id=str(staging_row.public_message_id),
-                public_group_message_id=str(staging_row.public_group_message_id)
+                public_group_message_id=str(staging_row.public_group_message_id),
+                hilfen_message_id=str(staging_row.hilfen_message_id),
+                hilfen_group_message_id=str(staging_row.hilfen_group_message_id)
             )
 
         # 5. Commit everything (Staging upsert + potential User update)

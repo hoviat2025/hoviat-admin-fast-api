@@ -45,7 +45,7 @@ async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> 
     # Configure transport with basic retry logic for network-level failures
     transport = httpx.AsyncHTTPTransport(retries=2)
 
-    async with httpx.AsyncClient(transport=transport, timeout=25.0, headers=HEADERS) as client:
+    async with httpx.AsyncClient(transport=transport, timeout=250.0, headers=HEADERS) as client:
         try:
             response = await client.post(url, json=payload)
             
@@ -56,10 +56,10 @@ async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> 
             # Rate limit handling (HTTP 429)
             if response.status_code == 429:
                 data = response.json()
-                retry_after = data.get("parameters", {}).get("retry_after", 1)
+                retry_after = data.get("parameters", {}).get("retry_after", 10)
                 
                 # Only attempt a recursive retry if the wait time is below a 30s threshold
-                if retry_on_429 and retry_after < 30:
+                if retry_on_429 and retry_after < 300:
                     logger.warning(f"Rate limited by Telegram. Retrying after {retry_after}s...")
                     await asyncio.sleep(retry_after)
                     
@@ -93,7 +93,7 @@ async def _raw_http_get_bytes(url: str) -> Optional[bytes]:
     Internal helper for binary data retrieval (e.g., downloading media).
     """
     try:
-        async with httpx.AsyncClient(timeout=60.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=600.0, headers=HEADERS) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
                 return resp.content

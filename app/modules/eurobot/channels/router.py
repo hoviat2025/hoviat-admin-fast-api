@@ -8,8 +8,8 @@ from app.core.schemas import StandardResponse
 # Input Schemas
 from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
 from app.modules.eurobot.channels.schemas.set_group_message_request import SetGroupMessageRequest
-# Import NEW Schema
 from app.modules.eurobot.channels.schemas.set_public_message_request import SetPublicMessageRequest
+from app.modules.eurobot.channels.schemas.set_hilfen_message_request import SetHilfenMessageRequest
 
 # Output Schemas
 from app.modules.eurobot.members.schemas.bot_user_dto import BotUserResponse
@@ -18,8 +18,8 @@ from app.modules.eurobot.members.schemas.bot_user_dto import BotUserResponse
 from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
 from app.modules.eurobot.channels.services.batch_update_channel_service import BatchUpdateChannelService
 from app.modules.eurobot.channels.services.set_group_message_service import SetGroupMessageService
-# Import NEW Service
 from app.modules.eurobot.channels.services.set_public_message_service import SetPublicMessageService
+from app.modules.eurobot.channels.services.set_hilfen_message_service import SetHilfenMessageService
 
 
 # 1. Protected Router
@@ -62,7 +62,7 @@ async def set_group_message_id_test(
     updated_user = await service.execute(payload)
     return StandardResponse.success(data=updated_user)
 
-# --- NEW ENDPOINT HERE ---
+
 @telegram_webhook_router.put("/set_public_message_id_test", response_model=StandardResponse[BotUserResponse])
 async def set_public_message_id_test(
     payload: SetPublicMessageRequest,
@@ -73,5 +73,20 @@ async def set_public_message_id_test(
     Public Access.
     """
     service = SetPublicMessageService(db)
+    updated_user = await service.execute(payload)
+    return StandardResponse.success(data=updated_user)
+
+
+
+@telegram_webhook_router.put("/set_hilfen_message_id_test", response_model=StandardResponse[BotUserResponse])
+async def set_hilfen_message_id_test(
+    payload: SetHilfenMessageRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Finds user by Main Channel Post ID (external_reply) and sets Public Channel IDs.
+    Public Access.
+    """
+    service = SetHilfenMessageService(db)
     updated_user = await service.execute(payload)
     return StandardResponse.success(data=updated_user)
