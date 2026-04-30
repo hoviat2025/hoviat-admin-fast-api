@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.hilfen.core.base_handler import BaseHandler
+from app.modules.hilfen.core.scenarios import is_user_message_in_private
 from app.modules.hilfen.services.telegram_service import send_message
 
 
@@ -18,14 +19,16 @@ class IgnoreBotMessagesHandler(BaseHandler):
 
 class SamCommandHandler(BaseHandler):
     """
-    Simple test command handler.
+    Simple test command that only works in private chats.
 
-    Responds to the `/sam` command with the message "sung".
-    This handler is stateless and exists mainly to validate the
-    dispatcher → handler → service flow during early development.
+    Demonstrates how to use scenario checkers inside `match`.
     """
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
+        # Only answer /sam when the user is talking to the bot privately
+        if not is_user_message_in_private(context):
+            return False
+
         text = context.get("text") or ""
         return text.strip().startswith("/sam")
 
