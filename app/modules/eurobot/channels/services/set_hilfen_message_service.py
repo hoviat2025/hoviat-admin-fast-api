@@ -5,13 +5,13 @@ from app.modules.eurobot.channels.schemas.set_hilfen_message_request import SetH
 
 # Import the specific repositories
 from app.modules.eurobot.channels.repositories.stage_message_ids import TelegramMessageRepository
-from app.modules.eurobot.channels.repositories.users import UserMessageUpdateRepository
+from app.modules.hilfen.repositories.user_repository import HilfenUserRepository
 
 class SetHilfenMessageService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.stage_repo = TelegramMessageRepository(db)
-        self.user_repo = UserMessageUpdateRepository(db)
+        self.user_repo = HilfenUserRepository(db)
 
     async def execute(self, payload: SetHilfenMessageRequest) -> User:
         """
@@ -35,13 +35,11 @@ class SetHilfenMessageService:
             hilfen_group_message_id=hilfen_group_msg_id_int
         )
 
-        # 3. Check for Completeness (All 6 columns must be populated)
+        # 3. Check for Completeness (4 columns must be populated)
         # We need to check all columns to determine if staging is complete
         is_staging_complete = (
             staging_row.user_id is not None and
             staging_row.group_message_id is not None and
-            staging_row.public_message_id is not None and
-            staging_row.public_group_message_id is not None and
             staging_row.hilfen_message_id is not None and
             staging_row.hilfen_group_message_id is not None
         )
@@ -58,12 +56,10 @@ class SetHilfenMessageService:
 
         # 4. Attempt Update on Main Table (One Motion)
         # All staging data is available, so we can update the user table
-        updated_user = await self.user_repo.set_message_ids_if_empty(
+        updated_user = await self.user_repo.set_hilfen_message_ids_if_empty(
             user_id=staging_row.user_id,
             telegram_message_id=str(lookup_msg_id_int),
             group_message_id=str(staging_row.group_message_id),
-            public_message_id=str(staging_row.public_message_id),
-            public_group_message_id=str(staging_row.public_group_message_id),
             hilfen_message_id=str(staging_row.hilfen_message_id),
             hilfen_group_message_id=str(staging_row.hilfen_group_message_id)
         )

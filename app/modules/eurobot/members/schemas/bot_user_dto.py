@@ -34,6 +34,8 @@ class BotUserResponse(BaseModel):
     # --- Hilfen fields (new) ---
     hilfen_message_id: Optional[StringifiedInt] = None
     hilfen_group_message_id: Optional[StringifiedInt] = None
+    admin_message_id: Optional[StringifiedInt] = None
+    admin_group_message_id: Optional[StringifiedInt] = None
     hilfen_state: Optional[str] = None
 
     # --- Standard Fields ---
