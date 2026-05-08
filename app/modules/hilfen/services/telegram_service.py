@@ -46,7 +46,7 @@ async def request_contact(chat_id: int, text: str = "Please share your phone num
         "text": text,
         "reply_markup": {
             "keyboard": [[{
-                "text": "📱 Share Phone Number",
+                "text": text,
                 "request_contact": True
             }]],
             "resize_keyboard": True,

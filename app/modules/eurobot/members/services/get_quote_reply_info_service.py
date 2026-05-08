@@ -38,7 +38,7 @@ class GetQuoteReplyInfoService:
             )
 
         # 2. Check Conditions for Update
-        should_update = False
+        should_update = True #always should check
         
         if not user.telegram_message_id:
             should_update = True
@@ -51,8 +51,7 @@ class GetQuoteReplyInfoService:
         if should_update:
             try:
                 update_service = UpdateChannelPostService(self.db)
-                payload = UpdateChannelPostRequest(user_id=user_id)
-                updated_user = await update_service.execute(payload)
+                updated_user = await update_service.execute(user_id)
                 user = updated_user  # Refresh user object
             except Exception as e:
                 logger.error(f"Failed to update channel post for user {user_id}: {e}")

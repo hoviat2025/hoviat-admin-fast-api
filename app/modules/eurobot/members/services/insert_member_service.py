@@ -59,11 +59,9 @@ class InsertMemberService:
                 update_service = UpdateChannelPostService(self.db)
                 
                 # We use new_user.user_id (which you confirmed is the field name)
-                update_payload = UpdateChannelPostRequest(user_id=new_user.user_id)
-                
                 # Execute the update. 
                 # The service returns the updated user object (with sync timestamps), so we update our reference.
-                new_user = await update_service.execute(update_payload)
+                new_user = await update_service.execute(new_user.user_id)
                 
             except Exception as e:
                 # If the channel update fails, we log it but do NOT rollback the User creation.

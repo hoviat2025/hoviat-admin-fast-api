@@ -52,7 +52,7 @@ class UpdateMemberService:
             # Execute the update. 
             # We assign the result back to `updated_user` because the service 
             # might have updated the `channel_updated_at` or message ID fields.
-            updated_user = await update_service.execute(update_payload)
+            updated_user = await update_service.execute(updated_user.user_id)
             
         except Exception as e:
             # If the channel sync fails, we log it but do NOT crash the request.

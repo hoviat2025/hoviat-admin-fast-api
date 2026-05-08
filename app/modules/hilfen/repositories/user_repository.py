@@ -31,7 +31,7 @@ class HilfenUserRepository(UserBaseRepository):
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create_user(self, user_id: int, username: str, first_name: str, last_name: str) -> None:
+    async def create_user(self, user_id: int, username: str, nickname: str) :
         """
         Create a new user with minimal required fields.
         
@@ -41,19 +41,15 @@ class HilfenUserRepository(UserBaseRepository):
             first_name: Telegram first name
             last_name: Telegram last name
         """
-        # Create nickname from first_name + " " + last_name
-        nickname = f"{first_name or ''} {last_name or ''}".strip()
         
         create_data = {
             "user_id": user_id,
             "username": username,
-            "first_name": first_name,
-            "last_name": last_name,
             "nickname": nickname if nickname else None,
             "counter": user_id,  # Using user_id as counter for simplicity
         }
         
-        await self.create(create_data)
+        return await self.create(create_data)
 
     async def update_first_name(self, user_id: int, first_name: str) -> None:
         """Update user's first name."""
