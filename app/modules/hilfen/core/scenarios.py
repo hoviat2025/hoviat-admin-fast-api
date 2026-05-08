@@ -67,4 +67,20 @@ def is_bot_itself(context: dict) -> bool:
     return context.get("user_id") == BOT_SELF_ID
 
 
+
+def is_album_update(context: dict) -> bool:
+    """
+    True if the update is part of a media album (has media_group_id)
+    and has NOT already been assembled into a composite.
+    """
+    return (
+        context.get("media_group_id") is not None
+        and not context.get("is_album_composite", False)
+    )
+
+
+def is_album_composite(context: dict) -> bool:
+    """True if this context represents an assembled album (multiple photos)."""
+    return context.get("is_album_composite", False)
+
 # ----- Add more scenario functions as needed -----

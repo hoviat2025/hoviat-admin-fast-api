@@ -2,18 +2,16 @@ def extract_context(update: dict) -> dict:
     """
     Normalize Telegram update payloads into a unified context object.
 
-    Telegram updates may represent different event types such as messages,
-    edited messages, callback queries, or contact sharing. This function 
-    extracts the minimal common fields required by handlers.
-
-    The dispatcher relies on this structure.
+    Extracts fields common to all handlers: user info, chat info, text,
+    contact, photo array, media_group_id (for albums), and a flag indicating
+    whether this update is an assembled album composite.
     """
 
     context = {
         "update_id": update.get("update_id"),
         "user_id": None,
         "chat_id": None,
-        "chat_type": None,        # "private", "group", "supergroup", "channel" ...
+        "chat_type": None,
         "text": None,
         "is_bot": False,
         "update_type": "unknown",
@@ -22,8 +20,13 @@ def extract_context(update: dict) -> dict:
         "first_name": None,
         "last_name": None,
         "contact": None,
+        "photo": None,           # list of photo size dicts (largest last)
+        "media_group_id": None,  # present when part of an album
+        "is_album_composite": False,   # True if this update was assembled by album catcher
+        "album_photos": None,    # list of photo arrays when composite
     }
 
+    # ---- message ----
     if "message" in update:
         msg = update["message"]
         chat_obj = msg.get("chat", {})
@@ -34,16 +37,18 @@ def extract_context(update: dict) -> dict:
         context["chat_id"] = chat_obj.get("id")
         context["chat_type"] = chat_obj.get("type")
         context["text"] = msg.get("text")
-
-        # User profile data
-        from_user = msg.get("from", {})
-        context["username"] = from_user.get("username")
-        context["first_name"] = from_user.get("first_name")
-        context["last_name"] = from_user.get("last_name")
-
-        # Shared contact
+        context["username"] = msg.get("from", {}).get("username")
+        context["first_name"] = msg.get("from", {}).get("first_name")
+        context["last_name"] = msg.get("from", {}).get("last_name")
         context["contact"] = msg.get("contact")
+        context["photo"] = msg.get("photo")
+        context["media_group_id"] = msg.get("media_group_id")
 
+        # Composite flag & extra album data
+        context["is_album_composite"] = msg.get("is_album_composite", False)
+        context["album_photos"] = msg.get("album_photos")
+
+    # ---- edited_message ----
     elif "edited_message" in update:
         msg = update["edited_message"]
         chat_obj = msg.get("chat", {})
@@ -54,12 +59,15 @@ def extract_context(update: dict) -> dict:
         context["chat_id"] = chat_obj.get("id")
         context["chat_type"] = chat_obj.get("type")
         context["text"] = msg.get("text")
+        context["username"] = msg.get("from", {}).get("username")
+        context["first_name"] = msg.get("from", {}).get("first_name")
+        context["last_name"] = msg.get("from", {}).get("last_name")
+        context["photo"] = msg.get("photo")
+        context["media_group_id"] = msg.get("media_group_id")
+        context["is_album_composite"] = msg.get("is_album_composite", False)
+        context["album_photos"] = msg.get("album_photos")
 
-        from_user = msg.get("from", {})
-        context["username"] = from_user.get("username")
-        context["first_name"] = from_user.get("first_name")
-        context["last_name"] = from_user.get("last_name")
-
+    # ---- callback_query ----
     elif "callback_query" in update:
         cb = update["callback_query"]
         msg = cb.get("message", {})
@@ -71,10 +79,8 @@ def extract_context(update: dict) -> dict:
         context["chat_id"] = chat_obj.get("id")
         context["chat_type"] = chat_obj.get("type")
         context["text"] = cb.get("data")
-
-        from_user = cb.get("from", {})
-        context["username"] = from_user.get("username")
-        context["first_name"] = from_user.get("first_name")
-        context["last_name"] = from_user.get("last_name")
+        context["username"] = cb.get("from", {}).get("username")
+        context["first_name"] = cb.get("from", {}).get("first_name")
+        context["last_name"] = cb.get("from", {}).get("last_name")
 
     return context
