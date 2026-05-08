@@ -17,9 +17,11 @@ from app.modules.hilfen.repositories.user_repository import HilfenUserRepository
 from app.modules.hilfen.services.state_service import BotStateService
 from app.modules.hilfen.services.telegram_service import (
     send_message,
+    send_message_with_keyboard,
     request_contact,
     remove_keyboard,
 )
+from app.modules.hilfen.services.keyboard_service import get_main_menu_keyboard
 from app.modules.eurobot.channels.services.update_channel_post_service import (
     UpdateChannelPostService,
 )
@@ -171,7 +173,7 @@ class LastNameRegistrationHandler(BaseHandler):
 
 class PhoneRegistrationHandler(BaseHandler):
     """
-    Handles phone number collection via contact sharing.
+    Handles phone number collection and finalises registration.
     """
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
@@ -221,7 +223,14 @@ class PhoneRegistrationHandler(BaseHandler):
 
             user = await user_repo.get_by_id(user_id)
             greeting_name = user.first_name if user else "there"
-            await send_message(chat_id, f"Registration complete! Welcome {greeting_name}!")
+
+            # Show the main menu keyboard now that registration is complete
+            main_menu = get_main_menu_keyboard()
+            await send_message_with_keyboard(
+                chat_id,
+                f"Registration complete! Welcome {greeting_name}!",
+                keyboard=main_menu,
+            )
 
         except Exception as e:
             await db.rollback()

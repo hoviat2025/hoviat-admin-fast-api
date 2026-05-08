@@ -3,7 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.hilfen.core.base_handler import BaseHandler
 from app.modules.hilfen.repositories.user_repository import HilfenUserRepository
-from app.modules.hilfen.services.telegram_service import send_message
+from app.modules.hilfen.services.telegram_service import send_message_with_keyboard
+from app.modules.hilfen.services.keyboard_service import get_main_menu_keyboard
 from app.modules.hilfen.services.registration_service import ensure_registration_progress
 
 
@@ -11,10 +12,9 @@ class StartCommandHandler(BaseHandler):
     """
     Handles the /start command.
 
-    - For an existing user: sends a welcome‑back message.
-    - For a **new** user: the registration checkpoint in the dispatcher already
-      created the record and prompted for the country; this handler therefore
-      does nothing in that case.
+    - If the user exists and registration is complete → welcome back with main menu.
+    - Otherwise, the dispatcher’s registration checkpoint already handles the
+      missing fields; this handler does nothing extra.
     """
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
@@ -28,23 +28,25 @@ class StartCommandHandler(BaseHandler):
         user_repo = HilfenUserRepository(db)
         user = await user_repo.get_by_id(user_id)
 
-        if user:
-            # Registration already complete – just greet.
-            greeting_name = user.first_name or "there"
-            await send_message(chat_id, f"Hi {greeting_name}! Welcome back!")
+        if user is None:
+            # Should not happen – dispatcher creates the user first.
             return
 
-        # New user – the registration checkpoint (in the dispatcher) already
-        # handled the creation + country prompt.  This branch is only reached
-        # if for some reason the checkpoint didn't run; delegate to it once more
-        # as a safety net.
-        await ensure_registration_progress(
-            db=db,
-            user_id=user_id,
-            chat_id=chat_id,
-            chat_type="private",
-            username=context.get("username"),
-            telegram_first_name=context.get("first_name"),
-            telegram_last_name=context.get("last_name"),
-            user_state=context.get("user_state"),
-        )
+        # Only show the main menu if all required registration fields are present.
+        required_fields_present = all([
+            user.country,
+            user.first_name,
+            user.last_name,
+            user.phone_number,
+        ])
+
+        if required_fields_present:
+            greeting_name = user.first_name or "there"
+            main_menu = get_main_menu_keyboard()
+            await send_message_with_keyboard(
+                chat_id,
+                f"Hi {greeting_name}! Welcome back!",
+                keyboard=main_menu,
+            )
+        # If registration is incomplete, do nothing – the dispatcher already
+        # called ensure_registration_progress and sent the appropriate prompt.
