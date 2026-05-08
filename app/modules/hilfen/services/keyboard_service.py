@@ -17,13 +17,13 @@ def get_main_menu_keyboard() -> list[list[dict]]:
     """
     return [
         [
-            {"text": " house "},
-            {"text": " work and needs "},
-            {"text": " euro "},
+            {"text": "🏠 House 🏠"},
+            {"text": "💶 Euro Exchange 💶"},
+            {"text": "🔖 Work and Needs 💼"},
         ],
         [
-            {"text": " my profile "},
-            {"text": " my ads "},
-            {"text": " help "},
+            {"text": "👤 My Profile 👤"},
+            {"text": "📁 My Ads 📁"},
+            {"text": "❔ Help and Support 📩"},
         ],
     ]
