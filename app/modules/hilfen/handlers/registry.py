@@ -10,8 +10,10 @@ Execution order:
   2. Stateful handlers (database session provided)
       - Registration flow handlers
       - Start command handler
-      - House ad flow handlers (between start and main menu)
       - Main‑menu button handlers
+      - House news flow – city selection handlers
+      - (old) House ad flow handlers – currently disabled
+      - More flow handlers will be added here later
   3. Fallback handlers (run only if no other handler matched)
 """
 
@@ -36,9 +38,21 @@ from app.modules.hilfen.handlers.stateful.registration_handlers import (
     InvalidPhoneInputHandler,
 )
 
-from app.modules.hilfen.handlers.stateful.house_add_flow_handlers import (
-    HousePhotoHandler,
-    HouseInvalidInputHandler,
+# Old house‑ad flow handlers (to be replaced)
+# from app.modules.hilfen.handlers.stateful.house_add_flow_handlers import (
+#     HousePhotoHandler,
+#     HouseInvalidInputHandler,
+# )
+
+# New house news flow – city selection
+from app.modules.hilfen.handlers.stateful.house_news_flow_handlers import (
+    HouseCityCancelHandler,
+    HouseCityAnotherCityHandler,
+    HouseCityBackHandler,
+    HouseCityInputHandler,
+    HouseCityCustomCancelHandler,
+    HouseCityCustomBackHandler,
+    HouseCityCustomInputHandler,
 )
 
 from app.modules.hilfen.handlers.stateful.main_menu_handlers import (
@@ -66,10 +80,6 @@ STATEFUL_HANDLERS = [
     # General commands
     StartCommandHandler(),
 
-    # House ad flow – catches photo/album while in "waiting_to_get_photos_for_house" state
-    HousePhotoHandler(),
-    HouseInvalidInputHandler(),
-
     # Main‑menu buttons (only respond when user is not in registration)
     HouseButtonHandler(),
     WorkAndNeedsButtonHandler(),
@@ -77,6 +87,22 @@ STATEFUL_HANDLERS = [
     MyProfileButtonHandler(),
     MyAdsButtonHandler(),
     HelpButtonHandler(),
+
+    # House news city‑selection flow
+    # (ordering matters: specific buttons first, then general city input)
+    HouseCityCancelHandler(),
+    HouseCityAnotherCityHandler(),
+    HouseCityBackHandler(),
+    HouseCityInputHandler(),
+
+    # Custom city flow
+    HouseCityCustomCancelHandler(),
+    HouseCityCustomBackHandler(),
+    HouseCityCustomInputHandler(),
+
+    # Old house‑ad photo handlers – disabled for now
+    # HousePhotoHandler(),
+    # HouseInvalidInputHandler(),
 ]
 
 FALLBACK_HANDLERS = [

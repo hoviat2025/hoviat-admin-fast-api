@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.hilfen.core.base_handler import BaseHandler
 from app.modules.hilfen.repositories.bot_state import BotStateRepository
 from app.modules.hilfen.services.state_service import BotStateService
-from app.modules.hilfen.services.telegram_service import send_message
+from app.modules.hilfen.services.telegram_service import send_message, send_message_with_keyboard
+from app.modules.hilfen.services.keyboard_service import build_city_keyboard
+from app.modules.hilfen.services.city_service import get_all_cities
 
 
 # ---------------------------------------------------------------------------
@@ -20,28 +22,35 @@ from app.modules.hilfen.services.telegram_service import send_message
 # ---------------------------------------------------------------------------
 class HouseButtonHandler(BaseHandler):
     """
-    Triggered by the "🏠 House 🏠" button.
+    Triggered by the "🏠 House 🏠" button when the user is at the main menu.
 
-    Sets the user state to 'waiting_to_get_photos_for_house' so subsequent
-    messages are captured by the house‑ad flow.
+    Sets the user state to 'news_house_city' and presents the city keyboard.
     """
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
             context.get("update_type") == "message"
             and context.get("text") == "🏠 House 🏠"
+            and context.get("user_state") is None   # only at main menu
         )
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         user_id = context["user_id"]
         chat_id = context["chat_id"]
 
+        # Transition to city‑selection state
         state_repo = BotStateRepository(db)
         state_service = BotStateService(state_repo)
-        await state_service.update_user_state(user_id, "waiting_to_get_photos_for_house")
-        await db.commit()
+        await state_service.update_user_state(user_id, "news_house_city")
 
-        await send_message(chat_id, "You selected House. Please send photos of your house.")
+        cities = get_all_cities()
+        keyboard = build_city_keyboard(cities)  # uses default cancel
+
+        await send_message_with_keyboard(
+            chat_id,
+            "🏠 Let's create a house ad. First, pick a city:",
+            keyboard,
+        )
 
 
 # ---------------------------------------------------------------------------
