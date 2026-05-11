@@ -51,7 +51,9 @@ class Settings(BaseSettings):
     HILFEN_CHANNEL_ID: str 
     HILFEN_GROUP_ID: str
     ADMIN_CHANNEL_ID: str 
-    ADMIN_GROUP_ID: str    
+    ADMIN_GROUP_ID: str  
+    CHECK_ADMIN_CHANNEL_ID: str 
+    CHECK_ADMIN_GROUP_ID: str    
     # Internal service URL for the formatting worker
     FORMATTER_WORKER_URL: str
 

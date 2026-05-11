@@ -23,9 +23,6 @@ CITY_FLAG = "🇩🇪"
 SKIP_PHOTOS_BUTTON_TEXT = "🚫 I won't send photos"
 PHOTO_CANCEL_MESSAGE = "Cancelling the news"
 
-# Inline callbacks
-CONFIRM_CALLBACK_PREFIX = "confirm_news_house_"
-DECLINE_CALLBACK_PREFIX = "decline_news_house_"
-
-# Admin check channel (placeholder, later configurable)
-ADMIN_CHECK_CHANNEL_ID = -1001234567890   # <<< REPLACE with real channel id
+# Inline callbacks for house preview confirm/decline
+HOUSE_PREVIEW_CONFIRM_PREFIX = "confirm_news_house_"
+HOUSE_PREVIEW_DECLINE_PREFIX = "decline_news_house_"

@@ -8,6 +8,7 @@ import json
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.modules.hilfen.core.base_handler import BaseHandler
 from app.modules.hilfen.core.scenarios import is_user_message_in_private
 from app.modules.hilfen.constants import (
@@ -15,9 +16,8 @@ from app.modules.hilfen.constants import (
     ANOTHER_CITY_BUTTON_TEXT,
     CITY_FLAG,
     SKIP_PHOTOS_BUTTON_TEXT,
-    CONFIRM_CALLBACK_PREFIX,
-    DECLINE_CALLBACK_PREFIX,
-    ADMIN_CHECK_CHANNEL_ID,
+    HOUSE_PREVIEW_CONFIRM_PREFIX,
+    HOUSE_PREVIEW_DECLINE_PREFIX,
 )
 from app.modules.hilfen.repositories.bot_state import BotStateRepository
 from app.modules.hilfen.repositories.news_repository import NewsRepository
@@ -28,6 +28,7 @@ from app.modules.hilfen.services.telegram_service import (
     send_photo,
     send_media_group,
     send_message_with_inline_keyboard,
+    send_message_return_id,
     edit_message_text,
     edit_message_reply_markup,
 )
@@ -40,8 +41,21 @@ from app.modules.hilfen.services.keyboard_service import (
 )
 from app.modules.hilfen.services.city_service import get_all_cities, is_valid_city
 from app.modules.hilfen.services.news_format_service import format_news_preview
-
+from app.modules.hilfen.services.telegram_service import (
+    send_message_with_keyboard,
+    send_message,
+    send_photo,
+    send_media_group,
+    send_message_with_inline_keyboard,
+    send_message_return_id,
+    send_message_with_reply,
+    edit_message_text,
+    edit_message_reply_markup,
+)
 logger = logging.getLogger(__name__)
+
+NEWS_TYPE = "house"   # central definition for this flow; can be reused if needed
+
 
 # ---------------------------------------------------------------------------
 # Utility: return to main menu (resets state, sends main keyboard)
@@ -155,7 +169,7 @@ class HouseCityInputHandler(BaseHandler):
         news_repo = NewsRepository(db)
         news = await news_repo.create_news(
             user_id=user_id,
-            news_type="house",
+            news_type=NEWS_TYPE,
             city=city_name,
             status="draft",
         )
@@ -221,7 +235,7 @@ class HouseCityCustomInputHandler(BaseHandler):
         news_repo = NewsRepository(db)
         news = await news_repo.create_news(
             user_id=user_id,
-            news_type="house",
+            news_type=NEWS_TYPE,
             city=city_name,
             status="draft",
         )
@@ -318,6 +332,7 @@ class HouseNewsDescriptionInputHandler(BaseHandler):
             )
             await _go_main_menu(db, user_id, chat_id, "Back to main menu.")
             return
+
         # Move to photo step
         state_repo = BotStateRepository(db)
         state_service = BotStateService(state_repo)
@@ -349,7 +364,6 @@ class HouseNewsPhotosCancelHandler(BaseHandler):
             return False
         if context.get("update_type") != "message":
             return False
-        # Guard: text can be None when a photo is sent
         text = context.get("text")
         if not isinstance(text, str):
             return False
@@ -380,7 +394,6 @@ class HouseNewsPhotosSkipHandler(BaseHandler):
             return False
         if context.get("update_type") != "message":
             return False
-        # Guard: text can be None
         text = context.get("text")
         if not isinstance(text, str):
             return False
@@ -405,7 +418,6 @@ class HouseNewsPhotosSkipHandler(BaseHandler):
 
         preview_text = format_news_preview(news.city, news.news_text or "")
 
-        from app.modules.hilfen.services.telegram_service import send_message_return_id
         preview_msg_id = await send_message_return_id(chat_id, preview_text)
         if preview_msg_id is None:
             await send_message(chat_id, "⚠️ Could not send preview, please try again later.")
@@ -422,14 +434,16 @@ class HouseNewsPhotosSkipHandler(BaseHandler):
             user_id, f"news_house_preview+{news_id}"
         )
 
-        # Send confirmation reply
-        inline_kb = build_preview_confirm_keyboard(news_id)
-        await send_message_with_inline_keyboard(
+        # Send confirmation reply and store its message id for later fallback replies
+        inline_kb = build_preview_confirm_keyboard(NEWS_TYPE, news_id)
+        handle_msg_id = await send_message_with_inline_keyboard(
             chat_id,
             "🔍 This is the preview of your news. Do you confirm?",
             inline_kb,
             reply_to_message_id=preview_msg_id,
         )
+        if handle_msg_id is not None:
+            await news_repo.update_news(news_id=news_id, user_handle_message_id=handle_msg_id)
 
 
 class HouseNewsPhotosMediaHandler(BaseHandler):
@@ -443,7 +457,6 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
             return False
         if context.get("update_type") not in ("message", "edited_message"):
             return False
-        # Must have a photo or be an album composite
         return (
             context.get("photo") is not None
             or context.get("album_photos") is not None
@@ -499,12 +512,10 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
         # Send preview with media
         preview_msg_ids = []
         if len(media_objects) == 1:
-            # Single photo
             msg_result = await send_photo(chat_id, media_objects[0]["file_id"], caption=preview_text)
             if msg_result:
                 preview_msg_ids.append(msg_result["message_id"])
         else:
-            # Album
             media_list = [{"type": "photo", "media": obj["file_id"]} for obj in media_objects]
             msg_results = await send_media_group(chat_id, media_list, caption=preview_text)
             if msg_results:
@@ -526,14 +537,16 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
             user_id, f"news_house_preview+{news_id}"
         )
 
-        # Send confirmation message as a reply
-        inline_kb = build_preview_confirm_keyboard(news_id)
-        await send_message_with_inline_keyboard(
+        # Send confirmation message and store its id
+        inline_kb = build_preview_confirm_keyboard(NEWS_TYPE, news_id)
+        handle_msg_id = await send_message_with_inline_keyboard(
             chat_id,
             "🔍 This is the preview of your news. Do you confirm?",
             inline_kb,
             reply_to_message_id=preview_msg_id,
         )
+        if handle_msg_id is not None:
+            await news_repo.update_news(news_id=news_id, user_handle_message_id=handle_msg_id)
 
 
 class HouseNewsPhotosInvalidHandler(BaseHandler):
@@ -545,14 +558,11 @@ class HouseNewsPhotosInvalidHandler(BaseHandler):
             return False
         if not is_user_message_in_private(context):
             return False
-        # Only match plain text messages that are not Cancel or Skip.
-        # Those are caught by their specific handlers which run earlier.
         if context.get("update_type") != "message":
             return False
         text = context.get("text")
         if not isinstance(text, str):
             return False  # not a text message (e.g., photo with no caption)
-        # Skip if it's the cancel or skip button – those have dedicated handlers
         if text.startswith(CANCEL_PREFIX) or text == SKIP_PHOTOS_BUTTON_TEXT:
             return False
         return True
@@ -565,13 +575,12 @@ class HouseNewsPhotosInvalidHandler(BaseHandler):
             f"• Cancel",
         )
 
-
 # ===========================================================================
 # PREVIEW CONFIRM / DECLINE (state = "news_house_preview+<newsid>")
 # ===========================================================================
 
 class HouseNewsPreviewConfirmHandler(BaseHandler):
-    """User confirms the preview – send to admin and finish."""
+    """User confirms the preview – send to admin channel, edit the inline‑keyboard message, finish."""
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         if context.get("update_type") != "callback_query":
@@ -580,7 +589,7 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         if not isinstance(state, str) or not state.startswith("news_house_preview+"):
             return False
         data = context.get("text", "")
-        return data.startswith(CONFIRM_CALLBACK_PREFIX)
+        return data.startswith(HOUSE_PREVIEW_CONFIRM_PREFIX)
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         user_id = context["user_id"]
@@ -588,9 +597,8 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         callback_data = context["text"]
         state_news_id = _extract_newsid(context["user_state"])
 
-        # Parse news_id from callback data
         try:
-            cb_news_id = int(callback_data[len(CONFIRM_CALLBACK_PREFIX):])
+            cb_news_id = int(callback_data[len(HOUSE_PREVIEW_CONFIRM_PREFIX):])
         except ValueError:
             logger.warning(f"Invalid confirm callback data: {callback_data}")
             return
@@ -606,7 +614,21 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
-        # Build news for admin channel
+        # 1) Edit the inline‑button message: remove buttons, update text
+        if news.user_handle_message_id:
+            await edit_message_text(
+                chat_id, news.user_handle_message_id,
+                "✅ Your news has been submitted for review."
+            )
+            # Remove the inline keyboard by setting it to an empty array
+            await edit_message_reply_markup(
+                chat_id, news.user_handle_message_id,
+                reply_markup={"inline_keyboard": []}
+            )
+        else:
+            await send_message(chat_id, "✅ Your news has been submitted for review.")
+
+        # 2) Forward to admin check channel
         preview_text = format_news_preview(news.city, news.news_text or "")
         media_objects = None
         if news.media:
@@ -615,43 +637,46 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             except Exception:
                 logger.warning(f"Invalid media JSON for news {news.id}")
 
-        # Send to admin check channel
-        admin_channel = ADMIN_CHECK_CHANNEL_ID
+        try:
+            check_admin_channel = int(settings.CHECK_ADMIN_CHANNEL_ID)
+        except (ValueError, TypeError):
+            logger.error("CHECK_ADMIN_CHANNEL_ID is not a valid integer")
+            await send_message(chat_id, "⚠️ Configuration error. Please contact support.")
+            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            return
+
         admin_msg_id = None
         if media_objects and len(media_objects) > 0:
             if len(media_objects) == 1:
-                result = await send_photo(admin_channel, media_objects[0]["file_id"], caption=preview_text)
+                result = await send_photo(check_admin_channel, media_objects[0]["file_id"], caption=preview_text)
                 if result:
                     admin_msg_id = result["message_id"]
             else:
                 media_list = [{"type": "photo", "media": obj["file_id"]} for obj in media_objects]
-                results = await send_media_group(admin_channel, media_list, caption=preview_text)
+                results = await send_media_group(check_admin_channel, media_list, caption=preview_text)
                 if results:
                     admin_msg_id = results[0]["message_id"]
         else:
-            # Text only
-            from app.modules.hilfen.services.telegram_service import send_message_return_id
-            admin_msg_id = await send_message_return_id(admin_channel, preview_text)
+            admin_msg_id = await send_message_return_id(check_admin_channel, preview_text)
 
         if admin_msg_id is None:
             await send_message(chat_id, "⚠️ Could not forward to review, please try again later.")
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
-        # Store admin check message
         await news_repo.update_news(
             news_id=cb_news_id,
             admin_check_message_id=admin_msg_id,
-            admin_check_chat_id=admin_channel,
+            admin_check_chat_id=check_admin_channel,
             status="pending",
         )
 
-        await send_message(chat_id, "✅ Your news has been submitted for review.")
+        # 3) Return to main menu
         await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
 
 
 class HouseNewsPreviewDeclineHandler(BaseHandler):
-    """User declines the preview – delete news and clean up."""
+    """User declines the preview – delete news, edit the inline‑keyboard message, clean up."""
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         if context.get("update_type") != "callback_query":
@@ -660,7 +685,7 @@ class HouseNewsPreviewDeclineHandler(BaseHandler):
         if not isinstance(state, str) or not state.startswith("news_house_preview+"):
             return False
         data = context.get("text", "")
-        return data.startswith(DECLINE_CALLBACK_PREFIX)
+        return data.startswith(HOUSE_PREVIEW_DECLINE_PREFIX)
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         user_id = context["user_id"]
@@ -669,7 +694,7 @@ class HouseNewsPreviewDeclineHandler(BaseHandler):
         state_news_id = _extract_newsid(context["user_state"])
 
         try:
-            cb_news_id = int(callback_data[len(DECLINE_CALLBACK_PREFIX):])
+            cb_news_id = int(callback_data[len(HOUSE_PREVIEW_DECLINE_PREFIX):])
         except ValueError:
             return
 
@@ -677,17 +702,39 @@ class HouseNewsPreviewDeclineHandler(BaseHandler):
             return
 
         news_repo = NewsRepository(db)
+        news = await news_repo.get_by_id(cb_news_id)
+        if not news:
+            await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
+            return
+
+        # 1) Edit the inline‑button message: remove buttons, show cancellation
+        if news.user_handle_message_id:
+            await edit_message_text(
+                chat_id, news.user_handle_message_id,
+                "❌ The news was cancelled."
+            )
+            await edit_message_reply_markup(
+                chat_id, news.user_handle_message_id,
+                reply_markup={"inline_keyboard": []}
+            )
+        else:
+            await send_message(chat_id, "❌ The news was cancelled.")
+
+        # 2) Delete the news row
         try:
             await news_repo.delete_news(cb_news_id)
         except Exception as e:
             logger.error(f"Error deleting news {cb_news_id}: {e}")
 
-        await send_message(chat_id, "❌ The news was cancelled.")
+        # 3) Return to main menu
         await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
 
 
 class HouseNewsPreviewFallbackHandler(BaseHandler):
-    """Handle random input while in preview state – prompt user to use buttons."""
+    """
+    Handle random input while in preview state.
+    Reminds the user to use the buttons and replies to the confirmation prompt.
+    """
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         state = context.get("user_state")
@@ -700,7 +747,24 @@ class HouseNewsPreviewFallbackHandler(BaseHandler):
         )
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
-        await send_message(
-            context["chat_id"],
-            "⚠️ Please use the buttons to confirm or decline your news preview.",
-        )
+        news_id = _extract_newsid(context["user_state"])
+        chat_id = context["chat_id"]
+        reply_to = None
+
+        if news_id is not None:
+            news_repo = NewsRepository(db)
+            news = await news_repo.get_by_id(news_id)
+            if news and news.user_handle_message_id:
+                reply_to = news.user_handle_message_id
+
+        if reply_to:
+            await send_message_with_reply(
+                chat_id,
+                "⚠️ Please use the buttons above to confirm or decline your news preview.",
+                reply_to_message_id=reply_to,
+            )
+        else:
+            await send_message(
+                chat_id,
+                "⚠️ Please use the buttons to confirm or decline your news preview.",
+            )

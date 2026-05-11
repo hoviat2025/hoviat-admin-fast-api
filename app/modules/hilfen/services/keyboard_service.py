@@ -12,8 +12,8 @@ from app.modules.hilfen.constants import (
     CITY_FLAG,
     SKIP_PHOTOS_BUTTON_TEXT,
     PHOTO_CANCEL_MESSAGE,
-    CONFIRM_CALLBACK_PREFIX,
-    DECLINE_CALLBACK_PREFIX,
+    HOUSE_PREVIEW_CONFIRM_PREFIX,
+    HOUSE_PREVIEW_DECLINE_PREFIX,
 )
 
 
@@ -88,20 +88,23 @@ def build_photos_keyboard() -> list[list[dict]]:
     ]
 
 
-def build_preview_confirm_keyboard(news_id: int) -> list[list[dict]]:
+def build_preview_confirm_keyboard(news_type: str, news_id: int) -> list[list[dict]]:
     """
     Inline keyboard for the user to confirm or decline the preview.
-    Callback data contains the news_id so the handler can verify it.
+    Callback data is constructed from news_type and news_id so later
+    news types (e.g., 'work') can reuse this builder.
     """
+    confirm_prefix = f"confirm_news_{news_type}_"
+    decline_prefix = f"decline_news_{news_type}_"
     return [
         [
             {
                 "text": "✅ Confirm",
-                "callback_data": f"{CONFIRM_CALLBACK_PREFIX}{news_id}",
+                "callback_data": f"{confirm_prefix}{news_id}",
             },
             {
                 "text": "❌ Decline",
-                "callback_data": f"{DECLINE_CALLBACK_PREFIX}{news_id}",
+                "callback_data": f"{decline_prefix}{news_id}",
             },
         ]
     ]

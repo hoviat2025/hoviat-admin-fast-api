@@ -339,3 +339,32 @@ async def edit_message_reply_markup(
         return False
 
     return True
+
+
+async def send_message_with_reply(
+    chat_id: int,
+    text: str,
+    reply_to_message_id: int,
+) -> bool:
+    """
+    Send a plain text message replying to a specific message.
+    Returns True on success, False on failure.
+    """
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "reply_to_message_id": reply_to_message_id,
+    }
+    response = await telegram_bot.send_request("sendMessage", payload)
+    if not response.success:
+        logger.error(
+            "Telegram sendMessage with reply failed",
+            extra={
+                "chat_id": chat_id,
+                "reply_to": reply_to_message_id,
+                "error": response.error_message,
+                "status_code": response.status_code,
+            },
+        )
+        return False
+    return True
