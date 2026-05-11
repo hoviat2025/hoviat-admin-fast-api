@@ -8,20 +8,12 @@ other services can obtain a keyboard without repeating its layout.
 
 from app.modules.hilfen.constants import (
     CANCEL_PREFIX,
-    BACK_BUTTON_TEXT,
     ANOTHER_CITY_BUTTON_TEXT,
     CITY_FLAG,
 )
 
 
 def get_main_menu_keyboard() -> list[list[dict]]:
-    """
-    Return the main menu keyboard that is shown after registration is complete.
-
-    Layout:
-        [ house ]  [ work and needs ]  [ euro ]
-        [ my profile ]  [ my ads ]  [ help ]
-    """
     return [
         [
             {"text": "🏠 House 🏠"},
@@ -41,15 +33,10 @@ def build_city_keyboard(
     cancel_message: str | None = None,
 ) -> list[list[dict]]:
     """
-    Build a reply keyboard for city selection.
-
-    - Each city is prefixed with the German flag (e.g. "🇩🇪 Berlin").
-    - Cities are laid out in rows of 3 columns.
-    - An "Another City" button is placed on its own row.
-    - A "Back" button on its own row.
-    - A cancel button on the last row. If *cancel_message* is given,
-      the button text becomes ``f"{CANCEL_PREFIX} {cancel_message}"``,
-      otherwise it is just ``CANCEL_PREFIX``.
+    City selection keyboard.
+    - Cities are prefixed with 🇩🇪 and arranged in rows of 3.
+    - An "Another City" button on its own row.
+    - A Cancel button (with optional message) on the last row.
     """
     rows: list[list[dict]] = []
 
@@ -62,9 +49,6 @@ def build_city_keyboard(
     # "Another City" row
     rows.append([{"text": ANOTHER_CITY_BUTTON_TEXT}])
 
-    # "Back" row
-    rows.append([{"text": BACK_BUTTON_TEXT}])
-
     # Cancel row
     cancel_text = (
         f"{CANCEL_PREFIX} {cancel_message}" if cancel_message else CANCEL_PREFIX
@@ -74,19 +58,14 @@ def build_city_keyboard(
     return rows
 
 
-def build_cancel_back_keyboard(
+def build_cancel_keyboard(
     cancel_message: str | None = None,
 ) -> list[list[dict]]:
     """
-    Minimal keyboard with only Cancel and Back buttons.
-
-    Used when the user needs to send free‑form text but should be able
-    to abort or go back.
+    A minimal keyboard with only a Cancel button (with optional message).
+    Used when the user is expected to type free‑form text.
     """
     cancel_text = (
         f"{CANCEL_PREFIX} {cancel_message}" if cancel_message else CANCEL_PREFIX
     )
-    return [
-        [{"text": cancel_text}],
-        [{"text": BACK_BUTTON_TEXT}],
-    ]
+    return [[{"text": cancel_text}]]

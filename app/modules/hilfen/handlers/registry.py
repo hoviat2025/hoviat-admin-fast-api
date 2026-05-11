@@ -12,8 +12,7 @@ Execution order:
       - Start command handler
       - Main‑menu button handlers
       - House news flow – city selection handlers
-      - (old) House ad flow handlers – currently disabled
-      - More flow handlers will be added here later
+      - House news flow – description handlers
   3. Fallback handlers (run only if no other handler matched)
 """
 
@@ -38,21 +37,17 @@ from app.modules.hilfen.handlers.stateful.registration_handlers import (
     InvalidPhoneInputHandler,
 )
 
-# Old house‑ad flow handlers (to be replaced)
-# from app.modules.hilfen.handlers.stateful.house_add_flow_handlers import (
-#     HousePhotoHandler,
-#     HouseInvalidInputHandler,
-# )
+# Old house‑ad flow handlers (disabled)
+# from app.modules.hilfen.handlers.stateful.house_add_flow_handlers import ...
 
-# New house news flow – city selection
 from app.modules.hilfen.handlers.stateful.house_news_flow_handlers import (
     HouseCityCancelHandler,
     HouseCityAnotherCityHandler,
-    HouseCityBackHandler,
     HouseCityInputHandler,
     HouseCityCustomCancelHandler,
-    HouseCityCustomBackHandler,
     HouseCityCustomInputHandler,
+    HouseNewsDescriptionCancelHandler,
+    HouseNewsDescriptionInputHandler,
 )
 
 from app.modules.hilfen.handlers.stateful.main_menu_handlers import (
@@ -70,7 +65,7 @@ STATELESS_HANDLERS = [
 ]
 
 STATEFUL_HANDLERS = [
-    # Registration flow (must be first to catch ongoing states)
+    # Registration flow
     CountryRegistrationHandler(),
     FirstNameRegistrationHandler(),
     LastNameRegistrationHandler(),
@@ -80,7 +75,7 @@ STATEFUL_HANDLERS = [
     # General commands
     StartCommandHandler(),
 
-    # Main‑menu buttons (only respond when user is not in registration)
+    # Main‑menu buttons
     HouseButtonHandler(),
     WorkAndNeedsButtonHandler(),
     EuroButtonHandler(),
@@ -88,21 +83,18 @@ STATEFUL_HANDLERS = [
     MyAdsButtonHandler(),
     HelpButtonHandler(),
 
-    # House news city‑selection flow
-    # (ordering matters: specific buttons first, then general city input)
+    # House news – city selection
     HouseCityCancelHandler(),
     HouseCityAnotherCityHandler(),
-    HouseCityBackHandler(),
     HouseCityInputHandler(),
 
     # Custom city flow
     HouseCityCustomCancelHandler(),
-    HouseCityCustomBackHandler(),
     HouseCityCustomInputHandler(),
 
-    # Old house‑ad photo handlers – disabled for now
-    # HousePhotoHandler(),
-    # HouseInvalidInputHandler(),
+    # House news – description input
+    HouseNewsDescriptionCancelHandler(),
+    HouseNewsDescriptionInputHandler(),
 ]
 
 FALLBACK_HANDLERS = [
