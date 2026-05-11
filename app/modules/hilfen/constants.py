@@ -26,3 +26,7 @@ PHOTO_CANCEL_MESSAGE = "Cancelling the news"
 # Inline callbacks for house preview confirm/decline
 HOUSE_PREVIEW_CONFIRM_PREFIX = "confirm_news_house_"
 HOUSE_PREVIEW_DECLINE_PREFIX = "decline_news_house_"
+
+# House role selection step (rent vs. publish)
+ROLE_RENT_TEXT = "🏠 I want to rent"
+ROLE_PUBLISH_TEXT = "🏠 I want to publish for renting"

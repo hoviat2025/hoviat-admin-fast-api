@@ -2,35 +2,19 @@
 """
 Central handler registry.
 
-All handlers must be registered here so the dispatcher can execute them
-in the correct order.
-
-Execution order:
-  1. Stateless handlers (no database access)
-  2. Stateful handlers (database session provided)
-      - Registration flow handlers
-      - Start command handler
-      - Main‑menu button handlers
-      - House news flow – city selection handlers
-      - House news flow – description handlers
-      - House news flow – photo handlers
-      - House news flow – preview confirm/decline handlers
-  3. Fallback handlers (run only if no other handler matched)
+Handlers are executed in the order listed below.
 """
 
 from app.modules.hilfen.handlers.stateless.basic_handlers import (
     IgnoreBotMessagesHandler,
     SamCommandHandler,
 )
-
 from app.modules.hilfen.handlers.stateless.fallback_handlers import (
     UnhandledPrivateMessageHandler,
 )
-
 from app.modules.hilfen.handlers.stateful.auth_handlers import (
     StartCommandHandler,
 )
-
 from app.modules.hilfen.handlers.stateful.registration_handlers import (
     CountryRegistrationHandler,
     FirstNameRegistrationHandler,
@@ -38,24 +22,30 @@ from app.modules.hilfen.handlers.stateful.registration_handlers import (
     PhoneRegistrationHandler,
     InvalidPhoneInputHandler,
 )
-
 from app.modules.hilfen.handlers.stateful.house_news_flow_handlers import (
     HouseCityCancelHandler,
     HouseCityAnotherCityHandler,
     HouseCityInputHandler,
     HouseCityCustomCancelHandler,
     HouseCityCustomInputHandler,
+    # Role step
+    HouseNewsRoleCancelHandler,
+    HouseNewsRoleRentHandler,
+    HouseNewsRolePublishHandler,
+    HouseNewsRoleInvalidHandler,
+    # Description step
     HouseNewsDescriptionCancelHandler,
     HouseNewsDescriptionInputHandler,
+    # Photos step
     HouseNewsPhotosCancelHandler,
     HouseNewsPhotosSkipHandler,
     HouseNewsPhotosMediaHandler,
     HouseNewsPhotosInvalidHandler,
+    # Preview step
     HouseNewsPreviewConfirmHandler,
     HouseNewsPreviewDeclineHandler,
     HouseNewsPreviewFallbackHandler,
 )
-
 from app.modules.hilfen.handlers.stateful.main_menu_handlers import (
     HouseButtonHandler,
     WorkAndNeedsButtonHandler,
@@ -71,17 +61,17 @@ STATELESS_HANDLERS = [
 ]
 
 STATEFUL_HANDLERS = [
-    # Registration flow
+    # Registration
     CountryRegistrationHandler(),
     FirstNameRegistrationHandler(),
     LastNameRegistrationHandler(),
     PhoneRegistrationHandler(),
     InvalidPhoneInputHandler(),
 
-    # General commands
+    # General
     StartCommandHandler(),
 
-    # Main‑menu buttons
+    # Main menu
     HouseButtonHandler(),
     WorkAndNeedsButtonHandler(),
     EuroButtonHandler(),
@@ -94,21 +84,27 @@ STATEFUL_HANDLERS = [
     HouseCityAnotherCityHandler(),
     HouseCityInputHandler(),
 
-    # Custom city flow
+    # Custom city
     HouseCityCustomCancelHandler(),
     HouseCityCustomInputHandler(),
 
-    # House news – description input
+    # House news – role selection
+    HouseNewsRoleCancelHandler(),
+    HouseNewsRoleRentHandler(),
+    HouseNewsRolePublishHandler(),
+    HouseNewsRoleInvalidHandler(),
+
+    # House news – description
     HouseNewsDescriptionCancelHandler(),
     HouseNewsDescriptionInputHandler(),
 
-    # House news – photo step
+    # House news – photos
     HouseNewsPhotosCancelHandler(),
     HouseNewsPhotosSkipHandler(),
     HouseNewsPhotosMediaHandler(),
     HouseNewsPhotosInvalidHandler(),
 
-    # House news – preview confirm/decline
+    # House news – preview
     HouseNewsPreviewConfirmHandler(),
     HouseNewsPreviewDeclineHandler(),
     HouseNewsPreviewFallbackHandler(),

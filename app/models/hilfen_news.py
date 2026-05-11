@@ -10,7 +10,7 @@ class HilfenNews(Base):
     user_id = Column(BigInteger, nullable=False)
     news_type = Column(String(50))
     city = Column(String(255))
-    news_text = Column(Text)              # renamed from "text"
+    news_text = Column(Text)             
     media = Column(Text)
     media_group_id = Column(Text)
     status = Column(String(50), default='draft')
@@ -26,3 +26,5 @@ class HilfenNews(Base):
     user_handle_message_id = Column(BigInteger)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    sub_type = Column(Text)
+    additional_features = Column(Text, default="{}")

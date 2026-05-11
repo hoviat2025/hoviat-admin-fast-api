@@ -12,6 +12,8 @@ from app.modules.hilfen.constants import (
     CITY_FLAG,
     SKIP_PHOTOS_BUTTON_TEXT,
     PHOTO_CANCEL_MESSAGE,
+    ROLE_RENT_TEXT,
+    ROLE_PUBLISH_TEXT,
     HOUSE_PREVIEW_CONFIRM_PREFIX,
     HOUSE_PREVIEW_DECLINE_PREFIX,
 )
@@ -44,16 +46,13 @@ def build_city_keyboard(
     """
     rows: list[list[dict]] = []
 
-    # City buttons – rows of 3
     flag = CITY_FLAG
     city_buttons = [{"text": f"{flag} {city}"} for city in cities]
     for i in range(0, len(city_buttons), 3):
         rows.append(city_buttons[i : i + 3])
 
-    # "Another City" row
     rows.append([{"text": ANOTHER_CITY_BUTTON_TEXT}])
 
-    # Cancel row
     cancel_text = (
         f"{CANCEL_PREFIX} {cancel_message}" if cancel_message else CANCEL_PREFIX
     )
@@ -67,7 +66,6 @@ def build_cancel_keyboard(
 ) -> list[list[dict]]:
     """
     A minimal keyboard with only a Cancel button (with optional message).
-    Used when the user is expected to type free‑form text.
     """
     cancel_text = (
         f"{CANCEL_PREFIX} {cancel_message}" if cancel_message else CANCEL_PREFIX
@@ -75,11 +73,26 @@ def build_cancel_keyboard(
     return [[{"text": cancel_text}]]
 
 
+def build_role_keyboard(
+    cancel_message: str | None = None,
+) -> list[list[dict]]:
+    """
+    Keyboard for the house role step: Rent or Publish for renting.
+    """
+    rows = [
+        [{"text": ROLE_RENT_TEXT}],
+        [{"text": ROLE_PUBLISH_TEXT}],
+    ]
+    cancel_text = (
+        f"{CANCEL_PREFIX} {cancel_message}" if cancel_message else CANCEL_PREFIX
+    )
+    rows.append([{"text": cancel_text}])
+    return rows
+
+
 def build_photos_keyboard() -> list[list[dict]]:
     """
-    Keyboard shown during the photo‑upload step:
-    - "I won't send photos" button.
-    - Cancel button with a fixed message.
+    Keyboard shown during the photo‑upload step.
     """
     cancel_text = f"{CANCEL_PREFIX} {PHOTO_CANCEL_MESSAGE}"
     return [
@@ -91,8 +104,6 @@ def build_photos_keyboard() -> list[list[dict]]:
 def build_preview_confirm_keyboard(news_type: str, news_id: int) -> list[list[dict]]:
     """
     Inline keyboard for the user to confirm or decline the preview.
-    Callback data is constructed from news_type and news_id so later
-    news types (e.g., 'work') can reuse this builder.
     """
     confirm_prefix = f"confirm_news_{news_type}_"
     decline_prefix = f"decline_news_{news_type}_"

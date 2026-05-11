@@ -1,7 +1,7 @@
 # app/modules/hilfen/handlers/stateful/house_news_flow_handlers.py
 """
-Handlers for the House News creation flow – city selection, description, photos,
-preview, and user confirm/decline.
+Handlers for the House News creation flow:
+  city → role → description → photos → preview → confirm/decline
 """
 
 import json
@@ -16,6 +16,8 @@ from app.modules.hilfen.constants import (
     ANOTHER_CITY_BUTTON_TEXT,
     CITY_FLAG,
     SKIP_PHOTOS_BUTTON_TEXT,
+    ROLE_RENT_TEXT,
+    ROLE_PUBLISH_TEXT,
     HOUSE_PREVIEW_CONFIRM_PREFIX,
     HOUSE_PREVIEW_DECLINE_PREFIX,
 )
@@ -29,6 +31,7 @@ from app.modules.hilfen.services.telegram_service import (
     send_media_group,
     send_message_with_inline_keyboard,
     send_message_return_id,
+    send_message_with_reply,
     edit_message_text,
     edit_message_reply_markup,
 )
@@ -36,29 +39,20 @@ from app.modules.hilfen.services.keyboard_service import (
     get_main_menu_keyboard,
     build_city_keyboard,
     build_cancel_keyboard,
+    build_role_keyboard,
     build_photos_keyboard,
     build_preview_confirm_keyboard,
 )
 from app.modules.hilfen.services.city_service import get_all_cities, is_valid_city
 from app.modules.hilfen.services.news_format_service import format_news_preview
-from app.modules.hilfen.services.telegram_service import (
-    send_message_with_keyboard,
-    send_message,
-    send_photo,
-    send_media_group,
-    send_message_with_inline_keyboard,
-    send_message_return_id,
-    send_message_with_reply,
-    edit_message_text,
-    edit_message_reply_markup,
-)
+
 logger = logging.getLogger(__name__)
 
-NEWS_TYPE = "house"   # central definition for this flow; can be reused if needed
+NEWS_TYPE = "house"
 
 
 # ---------------------------------------------------------------------------
-# Utility: return to main menu (resets state, sends main keyboard)
+# Utility: return to main menu
 # ---------------------------------------------------------------------------
 async def _go_main_menu(
     db: AsyncSession, user_id: int, chat_id: int, text: str
@@ -70,7 +64,7 @@ async def _go_main_menu(
 
 
 def _extract_newsid(state: str) -> int | None:
-    """Extract integer news id from state string like 'news_house_description+123'."""
+    """Extract integer news id from state string like 'news_house_role+123'."""
     try:
         parts = state.split("+", 1)
         if len(parts) != 2:
@@ -136,7 +130,7 @@ class HouseCityAnotherCityHandler(BaseHandler):
 class HouseCityInputHandler(BaseHandler):
     """
     Handle a city button tap or typed city name while in "news_house_city".
-    Inserts a news row and moves to description state.
+    Creates a news row and moves to the role step.
     """
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
@@ -151,7 +145,6 @@ class HouseCityInputHandler(BaseHandler):
         chat_id = context["chat_id"]
         user_id = context["user_id"]
 
-        # Extract city name from "🇩🇪 Berlin"
         city_name = raw_text
         if raw_text.startswith(f"{CITY_FLAG} "):
             city_name = raw_text[len(CITY_FLAG) + 1 :].strip()
@@ -184,13 +177,13 @@ class HouseCityInputHandler(BaseHandler):
         state_repo = BotStateRepository(db)
         state_service = BotStateService(state_repo)
         await state_service.update_user_state(
-            user_id, f"news_house_description+{news_id}"
+            user_id, f"news_house_role+{news_id}"
         )
 
-        keyboard = build_cancel_keyboard()
+        keyboard = build_role_keyboard()
         await send_message_with_keyboard(
             chat_id,
-            "✅ City saved. Now please send the description of your house:",
+            "✅ City saved. Now please choose your role:",
             keyboard,
         )
 
@@ -218,7 +211,7 @@ class HouseCityCustomCancelHandler(BaseHandler):
 
 
 class HouseCityCustomInputHandler(BaseHandler):
-    """Accept any free‑form text as the custom city name and create news row."""
+    """Accept any free‑form text as the custom city name and move to role step."""
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
@@ -250,14 +243,138 @@ class HouseCityCustomInputHandler(BaseHandler):
         state_repo = BotStateRepository(db)
         state_service = BotStateService(state_repo)
         await state_service.update_user_state(
-            user_id, f"news_house_description+{news_id}"
+            user_id, f"news_house_role+{news_id}"
         )
 
-        keyboard = build_cancel_keyboard()
+        keyboard = build_role_keyboard()
         await send_message_with_keyboard(
             chat_id,
-            f"✅ City '{city_name}' saved. Now please send the description of your house:",
+            f"✅ City '{city_name}' saved. Now please choose your role:",
             keyboard,
+        )
+
+
+# ===========================================================================
+# ROLE SELECTION (state = "news_house_role+<newsid>")
+# ===========================================================================
+
+class HouseNewsRoleCancelHandler(BaseHandler):
+    """Cancel during role selection – delete the news row and return to menu."""
+
+    async def match(self, context: dict, db: AsyncSession) -> bool:
+        state = context.get("user_state")
+        if not isinstance(state, str) or not state.startswith("news_house_role+"):
+            return False
+        if not is_user_message_in_private(context):
+            return False
+        if context.get("update_type") != "message":
+            return False
+        text = context.get("text")
+        if not isinstance(text, str):
+            return False
+        return text.startswith(CANCEL_PREFIX)
+
+    async def handle(self, context: dict, db: AsyncSession) -> None:
+        news_id = _extract_newsid(context["user_state"])
+        if news_id is not None:
+            try:
+                news_repo = NewsRepository(db)
+                await news_repo.delete_news(news_id)
+            except Exception as e:
+                logger.error(f"Error deleting news {news_id}: {e}")
+        await _go_main_menu(
+            db, context["user_id"], context["chat_id"],
+            "❌ House ad creation cancelled.",
+        )
+
+
+class HouseNewsRoleRentHandler(BaseHandler):
+    """User selects 'I want to rent'."""
+
+    async def match(self, context: dict, db: AsyncSession) -> bool:
+        state = context.get("user_state")
+        if not isinstance(state, str) or not state.startswith("news_house_role+"):
+            return False
+        if not is_user_message_in_private(context):
+            return False
+        if context.get("update_type") != "message":
+            return False
+        text = context.get("text")
+        return text == ROLE_RENT_TEXT
+
+    async def handle(self, context: dict, db: AsyncSession) -> None:
+        await _handle_role_selection(context, db, "rent")
+
+
+class HouseNewsRolePublishHandler(BaseHandler):
+    """User selects 'I want to publish for renting'."""
+
+    async def match(self, context: dict, db: AsyncSession) -> bool:
+        state = context.get("user_state")
+        if not isinstance(state, str) or not state.startswith("news_house_role+"):
+            return False
+        if not is_user_message_in_private(context):
+            return False
+        if context.get("update_type") != "message":
+            return False
+        text = context.get("text")
+        return text == ROLE_PUBLISH_TEXT
+
+    async def handle(self, context: dict, db: AsyncSession) -> None:
+        await _handle_role_selection(context, db, "publish")
+
+
+async def _handle_role_selection(context: dict, db: AsyncSession, sub_type: str) -> None:
+    """Common logic for storing the chosen role and advancing to description."""
+    news_id = _extract_newsid(context["user_state"])
+    chat_id = context["chat_id"]
+    user_id = context["user_id"]
+
+    if news_id is None:
+        await send_message(chat_id, "⚠️ Error. Please start again.")
+        await _go_main_menu(db, user_id, chat_id, "Main menu")
+        return
+
+    news_repo = NewsRepository(db)
+    await news_repo.update_news(news_id=news_id, sub_type=sub_type)
+
+    state_repo = BotStateRepository(db)
+    state_service = BotStateService(state_repo)
+    await state_service.update_user_state(
+        user_id, f"news_house_description+{news_id}"
+    )
+
+    keyboard = build_cancel_keyboard()
+    await send_message_with_keyboard(
+        chat_id,
+        f"✅ Role saved. Now please send the description of your house:",
+        keyboard,
+    )
+
+
+class HouseNewsRoleInvalidHandler(BaseHandler):
+    """Any other text during role selection – reminder."""
+
+    async def match(self, context: dict, db: AsyncSession) -> bool:
+        state = context.get("user_state")
+        if not isinstance(state, str) or not state.startswith("news_house_role+"):
+            return False
+        if not is_user_message_in_private(context):
+            return False
+        if context.get("update_type") != "message":
+            return False
+        text = context.get("text")
+        if not isinstance(text, str):
+            return False
+        # Skip specific buttons already caught
+        if text in (ROLE_RENT_TEXT, ROLE_PUBLISH_TEXT) or text.startswith(CANCEL_PREFIX):
+            return False
+        return True
+
+    async def handle(self, context: dict, db: AsyncSession) -> None:
+        await send_message(
+            context["chat_id"],
+            "⚠️ Please choose one of the options below:",
         )
 
 
@@ -287,9 +404,6 @@ class HouseNewsDescriptionCancelHandler(BaseHandler):
                 await news_repo.delete_news(news_id)
             except Exception as e:
                 logger.error(f"Error deleting news {news_id}: {e}")
-        else:
-            logger.warning("Could not extract news_id from state, skipping delete")
-
         await _go_main_menu(
             db, context["user_id"], context["chat_id"],
             "❌ House ad creation cancelled.",
@@ -321,7 +435,6 @@ class HouseNewsDescriptionInputHandler(BaseHandler):
             return
 
         news_repo = NewsRepository(db)
-
         try:
             await news_repo.update_news(news_id=news_id, user_id=user_id, news_text=description)
         except Exception as e:
@@ -424,17 +537,14 @@ class HouseNewsPhotosSkipHandler(BaseHandler):
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
-        # Store preview_message_id
         await news_repo.update_news(news_id=news_id, preview_message_id=preview_msg_id)
 
-        # Move to preview state
         state_repo = BotStateRepository(db)
         state_service = BotStateService(state_repo)
         await state_service.update_user_state(
             user_id, f"news_house_preview+{news_id}"
         )
 
-        # Send confirmation reply and store its message id for later fallback replies
         inline_kb = build_preview_confirm_keyboard(NEWS_TYPE, news_id)
         handle_msg_id = await send_message_with_inline_keyboard(
             chat_id,
@@ -479,7 +589,6 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
-        # Extract file_ids and unique_ids
         media_objects = []
         if context.get("album_photos"):
             for photo_array in context["album_photos"]:
@@ -499,17 +608,14 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
 
         media_group_id = context.get("media_group_id")
 
-        # Update DB
         await news_repo.update_news(
             news_id=news_id,
             media=json.dumps(media_objects),
             media_group_id=media_group_id,
         )
 
-        # Build preview caption
         preview_text = format_news_preview(news.city, news.news_text or "")
 
-        # Send preview with media
         preview_msg_ids = []
         if len(media_objects) == 1:
             msg_result = await send_photo(chat_id, media_objects[0]["file_id"], caption=preview_text)
@@ -526,18 +632,15 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
-        # Store the first message's ID as preview_message_id
         preview_msg_id = preview_msg_ids[0]
         await news_repo.update_news(news_id=news_id, preview_message_id=preview_msg_id)
 
-        # Move to preview state
         state_repo = BotStateRepository(db)
         state_service = BotStateService(state_repo)
         await state_service.update_user_state(
             user_id, f"news_house_preview+{news_id}"
         )
 
-        # Send confirmation message and store its id
         inline_kb = build_preview_confirm_keyboard(NEWS_TYPE, news_id)
         handle_msg_id = await send_message_with_inline_keyboard(
             chat_id,
@@ -550,7 +653,7 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
 
 
 class HouseNewsPhotosInvalidHandler(BaseHandler):
-    """Any other input during photo step – remind user of the options."""
+    """Any other input during photo step – reminder."""
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         state = context.get("user_state")
@@ -562,7 +665,7 @@ class HouseNewsPhotosInvalidHandler(BaseHandler):
             return False
         text = context.get("text")
         if not isinstance(text, str):
-            return False  # not a text message (e.g., photo with no caption)
+            return False
         if text.startswith(CANCEL_PREFIX) or text == SKIP_PHOTOS_BUTTON_TEXT:
             return False
         return True
@@ -574,6 +677,7 @@ class HouseNewsPhotosInvalidHandler(BaseHandler):
             f"• {SKIP_PHOTOS_BUTTON_TEXT}\n"
             f"• Cancel",
         )
+
 
 # ===========================================================================
 # PREVIEW CONFIRM / DECLINE (state = "news_house_preview+<newsid>")
@@ -614,13 +718,12 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
-        # 1) Edit the inline‑button message: remove buttons, update text
+        # Edit the inline‑button message
         if news.user_handle_message_id:
             await edit_message_text(
                 chat_id, news.user_handle_message_id,
                 "✅ Your news has been submitted for review."
             )
-            # Remove the inline keyboard by setting it to an empty array
             await edit_message_reply_markup(
                 chat_id, news.user_handle_message_id,
                 reply_markup={"inline_keyboard": []}
@@ -628,7 +731,7 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         else:
             await send_message(chat_id, "✅ Your news has been submitted for review.")
 
-        # 2) Forward to admin check channel
+        # Forward to admin check channel
         preview_text = format_news_preview(news.city, news.news_text or "")
         media_objects = None
         if news.media:
@@ -671,7 +774,6 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             status="pending",
         )
 
-        # 3) Return to main menu
         await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
 
 
@@ -707,7 +809,6 @@ class HouseNewsPreviewDeclineHandler(BaseHandler):
             await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
             return
 
-        # 1) Edit the inline‑button message: remove buttons, show cancellation
         if news.user_handle_message_id:
             await edit_message_text(
                 chat_id, news.user_handle_message_id,
@@ -720,27 +821,21 @@ class HouseNewsPreviewDeclineHandler(BaseHandler):
         else:
             await send_message(chat_id, "❌ The news was cancelled.")
 
-        # 2) Delete the news row
         try:
             await news_repo.delete_news(cb_news_id)
         except Exception as e:
             logger.error(f"Error deleting news {cb_news_id}: {e}")
 
-        # 3) Return to main menu
         await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
 
 
 class HouseNewsPreviewFallbackHandler(BaseHandler):
-    """
-    Handle random input while in preview state.
-    Reminds the user to use the buttons and replies to the confirmation prompt.
-    """
+    """Handle random input while in preview state."""
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         state = context.get("user_state")
         if not isinstance(state, str) or not state.startswith("news_house_preview+"):
             return False
-        # Match any message or callback that wasn't caught by confirm/decline
         return (
             is_user_message_in_private(context)
             and context.get("update_type") in ("message", "callback_query")
