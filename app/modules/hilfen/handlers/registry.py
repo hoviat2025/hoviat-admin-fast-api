@@ -13,6 +13,8 @@ Execution order:
       - Main‑menu button handlers
       - House news flow – city selection handlers
       - House news flow – description handlers
+      - House news flow – photo handlers
+      - House news flow – preview confirm/decline handlers
   3. Fallback handlers (run only if no other handler matched)
 """
 
@@ -37,9 +39,6 @@ from app.modules.hilfen.handlers.stateful.registration_handlers import (
     InvalidPhoneInputHandler,
 )
 
-# Old house‑ad flow handlers (disabled)
-# from app.modules.hilfen.handlers.stateful.house_add_flow_handlers import ...
-
 from app.modules.hilfen.handlers.stateful.house_news_flow_handlers import (
     HouseCityCancelHandler,
     HouseCityAnotherCityHandler,
@@ -48,6 +47,13 @@ from app.modules.hilfen.handlers.stateful.house_news_flow_handlers import (
     HouseCityCustomInputHandler,
     HouseNewsDescriptionCancelHandler,
     HouseNewsDescriptionInputHandler,
+    HouseNewsPhotosCancelHandler,
+    HouseNewsPhotosSkipHandler,
+    HouseNewsPhotosMediaHandler,
+    HouseNewsPhotosInvalidHandler,
+    HouseNewsPreviewConfirmHandler,
+    HouseNewsPreviewDeclineHandler,
+    HouseNewsPreviewFallbackHandler,
 )
 
 from app.modules.hilfen.handlers.stateful.main_menu_handlers import (
@@ -95,6 +101,17 @@ STATEFUL_HANDLERS = [
     # House news – description input
     HouseNewsDescriptionCancelHandler(),
     HouseNewsDescriptionInputHandler(),
+
+    # House news – photo step
+    HouseNewsPhotosCancelHandler(),
+    HouseNewsPhotosSkipHandler(),
+    HouseNewsPhotosMediaHandler(),
+    HouseNewsPhotosInvalidHandler(),
+
+    # House news – preview confirm/decline
+    HouseNewsPreviewConfirmHandler(),
+    HouseNewsPreviewDeclineHandler(),
+    HouseNewsPreviewFallbackHandler(),
 ]
 
 FALLBACK_HANDLERS = [

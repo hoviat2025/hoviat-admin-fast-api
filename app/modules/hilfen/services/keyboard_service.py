@@ -10,6 +10,10 @@ from app.modules.hilfen.constants import (
     CANCEL_PREFIX,
     ANOTHER_CITY_BUTTON_TEXT,
     CITY_FLAG,
+    SKIP_PHOTOS_BUTTON_TEXT,
+    PHOTO_CANCEL_MESSAGE,
+    CONFIRM_CALLBACK_PREFIX,
+    DECLINE_CALLBACK_PREFIX,
 )
 
 
@@ -69,3 +73,35 @@ def build_cancel_keyboard(
         f"{CANCEL_PREFIX} {cancel_message}" if cancel_message else CANCEL_PREFIX
     )
     return [[{"text": cancel_text}]]
+
+
+def build_photos_keyboard() -> list[list[dict]]:
+    """
+    Keyboard shown during the photo‑upload step:
+    - "I won't send photos" button.
+    - Cancel button with a fixed message.
+    """
+    cancel_text = f"{CANCEL_PREFIX} {PHOTO_CANCEL_MESSAGE}"
+    return [
+        [{"text": SKIP_PHOTOS_BUTTON_TEXT}],
+        [{"text": cancel_text}],
+    ]
+
+
+def build_preview_confirm_keyboard(news_id: int) -> list[list[dict]]:
+    """
+    Inline keyboard for the user to confirm or decline the preview.
+    Callback data contains the news_id so the handler can verify it.
+    """
+    return [
+        [
+            {
+                "text": "✅ Confirm",
+                "callback_data": f"{CONFIRM_CALLBACK_PREFIX}{news_id}",
+            },
+            {
+                "text": "❌ Decline",
+                "callback_data": f"{DECLINE_CALLBACK_PREFIX}{news_id}",
+            },
+        ]
+    ]

@@ -72,7 +72,7 @@ async def _process_album_after_delay(media_group_id: str):
     and dispatch it through the normal pipeline.
     """
     try:
-        await asyncio.sleep(5)
+        await asyncio.sleep(15)
 
         parts = album_cache.collect(media_group_id)
         if not parts:

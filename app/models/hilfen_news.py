@@ -23,5 +23,6 @@ class HilfenNews(Base):
     group_chat_id = Column(BigInteger)
     group_message_id = Column(BigInteger)
     contact_group_message_id = Column(BigInteger)
+    user_handle_message_id = Column(BigInteger)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
