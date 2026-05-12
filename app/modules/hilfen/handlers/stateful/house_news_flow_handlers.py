@@ -42,9 +42,14 @@ from app.modules.hilfen.services.keyboard_service import (
     build_role_keyboard,
     build_photos_keyboard,
     build_preview_confirm_keyboard,
+    build_admin_review_keyboard,
+
 )
 from app.modules.hilfen.services.city_service import get_all_cities, is_valid_city
 from app.modules.hilfen.services.news_format_service import format_news_preview
+
+from app.modules.hilfen.services.reply_service import ReplyService
+
 
 logger = logging.getLogger(__name__)
 
@@ -682,9 +687,8 @@ class HouseNewsPhotosInvalidHandler(BaseHandler):
 # ===========================================================================
 # PREVIEW CONFIRM / DECLINE (state = "news_house_preview+<newsid>")
 # ===========================================================================
-
 class HouseNewsPreviewConfirmHandler(BaseHandler):
-    """User confirms the preview – send to admin channel, edit the inline‑keyboard message, finish."""
+    """User confirms the preview – send to admin channel with cross‑chat reply, then reply with handler message."""
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
         if context.get("update_type") != "callback_query":
@@ -718,7 +722,9 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
-        # Edit the inline‑button message
+        # ------------------------------------------------
+        # 1. Edit the user's inline‑keyboard message
+        # ------------------------------------------------
         if news.user_handle_message_id:
             await edit_message_text(
                 chat_id, news.user_handle_message_id,
@@ -731,7 +737,15 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         else:
             await send_message(chat_id, "✅ Your news has been submitted for review.")
 
-        # Forward to admin check channel
+        # ------------------------------------------------
+        # 2. Build the cross‑chat reply for the admin channel
+        # ------------------------------------------------
+        reply_service = ReplyService(db)
+        reply_params = await reply_service.build_admin_channel_reply(user_id)
+
+        # ------------------------------------------------
+        # 3. Forward the preview to the check‑admin channel
+        # ------------------------------------------------
         preview_text = format_news_preview(news.city, news.news_text or "")
         media_objects = None
         if news.media:
@@ -751,22 +765,40 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         admin_msg_id = None
         if media_objects and len(media_objects) > 0:
             if len(media_objects) == 1:
-                result = await send_photo(check_admin_channel, media_objects[0]["file_id"], caption=preview_text)
+                result = await send_photo(
+                    check_admin_channel,
+                    media_objects[0]["file_id"],
+                    caption=preview_text,
+                    reply_parameters=reply_params,          # <-- cross‑chat reply
+                )
                 if result:
                     admin_msg_id = result["message_id"]
             else:
-                media_list = [{"type": "photo", "media": obj["file_id"]} for obj in media_objects]
-                results = await send_media_group(check_admin_channel, media_list, caption=preview_text)
+                media_list = [
+                    {"type": "photo", "media": obj["file_id"]} for obj in media_objects
+                ]
+                results = await send_media_group(
+                    check_admin_channel,
+                    media_list,
+                    caption=preview_text,
+                    reply_parameters=reply_params,          # <-- cross‑chat reply
+                )
                 if results:
+                    # The caption is on the first message of the album
                     admin_msg_id = results[0]["message_id"]
         else:
-            admin_msg_id = await send_message_return_id(check_admin_channel, preview_text)
+            admin_msg_id = await send_message_return_id(
+                check_admin_channel,
+                preview_text,
+                reply_parameters=reply_params,               # <-- cross‑chat reply
+            )
 
         if admin_msg_id is None:
             await send_message(chat_id, "⚠️ Could not forward to review, please try again later.")
             await _go_main_menu(db, user_id, chat_id, "Main menu")
             return
 
+        # Save the preview message ID (same as before)
         await news_repo.update_news(
             news_id=cb_news_id,
             admin_check_message_id=admin_msg_id,
@@ -774,8 +806,26 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             status="pending",
         )
 
-        await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
+        # ------------------------------------------------
+        # 4. Reply to the preview with the handler message
+        # ------------------------------------------------
+        admin_kb = build_admin_review_keyboard(cb_news_id)
+        handler_msg_id = await send_message_with_inline_keyboard(
+            check_admin_channel,
+            "📬 **New house ad for review**\nPlease confirm or decline:",
+            admin_kb,
+            reply_to_message_id=admin_msg_id,   # reply in the same chat
+        )
+        if handler_msg_id is not None:
+            await news_repo.update_news(
+                news_id=cb_news_id,
+                admin_handler_message_id=handler_msg_id,
+            )
 
+        # ------------------------------------------------
+        # 5. Return the user to the main menu
+        # ------------------------------------------------
+        await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
 
 class HouseNewsPreviewDeclineHandler(BaseHandler):
     """User declines the preview – delete news, edit the inline‑keyboard message, clean up."""

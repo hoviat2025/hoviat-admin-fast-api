@@ -54,6 +54,10 @@ from app.modules.hilfen.handlers.stateful.main_menu_handlers import (
     MyAdsButtonHandler,
     HelpButtonHandler,
 )
+from app.modules.hilfen.handlers.stateful.house_news_admin_handlers import (   # NEW
+    AdminDeclineCallbackHandler,
+    AdminDeclineMessageHandler,
+)
 
 STATELESS_HANDLERS = [
     IgnoreBotMessagesHandler(),
@@ -108,6 +112,10 @@ STATEFUL_HANDLERS = [
     HouseNewsPreviewConfirmHandler(),
     HouseNewsPreviewDeclineHandler(),
     HouseNewsPreviewFallbackHandler(),
+
+    # Admin review handlers (check‑admin channel)
+    AdminDeclineCallbackHandler(),
+    AdminDeclineMessageHandler(),
 ]
 
 FALLBACK_HANDLERS = [

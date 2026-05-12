@@ -38,29 +38,6 @@ async def send_message(chat_id: int, text: str) -> bool:
     return True
 
 
-async def send_message_return_id(chat_id: int, text: str) -> Optional[int]:
-    """
-    Send a plain text message and return the message_id.
-    Returns None on failure.
-    """
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-    }
-    response = await telegram_bot.send_request("sendMessage", payload)
-    if not response.success:
-        logger.error(
-            "Telegram sendMessage (return id) failed",
-            extra={
-                "chat_id": chat_id,
-                "text": text,
-                "error": response.error_message,
-                "status_code": response.status_code,
-            },
-        )
-        return None
-    result = response.data.get("result", {})
-    return result.get("message_id")
 
 
 async def send_message_with_keyboard(
@@ -165,83 +142,8 @@ async def remove_keyboard(chat_id: int, text: str) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# Media / inline keyboard helpers for the news flow
-# ---------------------------------------------------------------------------
-
-async def send_photo(
-    chat_id: int,
-    photo: str,          # file_id
-    caption: str = "",
-) -> Optional[dict]:
-    """
-    Send a single photo with an optional caption.
-    Returns the full message object on success, None on failure.
-    """
-    payload = {
-        "chat_id": chat_id,
-        "photo": photo,
-        "caption": caption,
-    }
-
-    response = await telegram_bot.send_request("sendPhoto", payload)
-    if not response.success:
-        logger.error(
-            "Telegram sendPhoto failed",
-            extra={
-                "chat_id": chat_id,
-                "error": response.error_message,
-                "status_code": response.status_code,
-            },
-        )
-        return None
-
-    return response.data.get("result")
 
 
-async def send_media_group(
-    chat_id: int,
-    media: list[dict],
-    caption: str = "",
-) -> Optional[list[dict]]:
-    """
-    Send a media group (album).
-    `media` is a list of objects like {"type": "photo", "media": file_id}.
-    Only the first element carries the caption.
-    Returns a list of message objects on success, None on failure.
-    """
-    if not media:
-        return None
-
-    # Attach caption to the first media item
-    media_payload = []
-    for idx, item in enumerate(media):
-        entry = {
-            "type": "photo",
-            "media": item["media"],
-        }
-        if idx == 0 and caption:
-            entry["caption"] = caption
-        media_payload.append(entry)
-
-    payload = {
-        "chat_id": chat_id,
-        "media": media_payload,
-    }
-
-    response = await telegram_bot.send_request("sendMediaGroup", payload)
-    if not response.success:
-        logger.error(
-            "Telegram sendMediaGroup failed",
-            extra={
-                "chat_id": chat_id,
-                "error": response.error_message,
-                "status_code": response.status_code,
-            },
-        )
-        return None
-
-    return response.data.get("result")
 
 
 async def send_message_with_inline_keyboard(
@@ -368,3 +270,115 @@ async def send_message_with_reply(
         )
         return False
     return True
+
+
+async def send_message_return_id(
+    chat_id: int,
+    text: str,
+    reply_parameters: dict | None = None,   # <-- NEW
+) -> Optional[int]:
+    """
+    Send a plain text message and return the message_id.
+    Returns None on failure.
+    """
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+    }
+    if reply_parameters is not None:          # <-- NEW
+        payload["reply_parameters"] = reply_parameters
+
+    response = await telegram_bot.send_request("sendMessage", payload)
+    if not response.success:
+        logger.error(
+            "Telegram sendMessage (return id) failed",
+            extra={
+                "chat_id": chat_id,
+                "text": text,
+                "error": response.error_message,
+                "status_code": response.status_code,
+            },
+        )
+        return None
+    result = response.data.get("result", {})
+    return result.get("message_id")
+
+
+async def send_photo(
+    chat_id: int,
+    photo: str,          # file_id
+    caption: str = "",
+    reply_parameters: dict | None = None,    # <-- NEW
+) -> Optional[dict]:
+    """
+    Send a single photo with an optional caption.
+    Returns the full message object on success, None on failure.
+    """
+    payload = {
+        "chat_id": chat_id,
+        "photo": photo,
+        "caption": caption,
+    }
+    if reply_parameters is not None:          # <-- NEW
+        payload["reply_parameters"] = reply_parameters
+
+    response = await telegram_bot.send_request("sendPhoto", payload)
+    if not response.success:
+        logger.error(
+            "Telegram sendPhoto failed",
+            extra={
+                "chat_id": chat_id,
+                "error": response.error_message,
+                "status_code": response.status_code,
+            },
+        )
+        return None
+
+    return response.data.get("result")
+
+
+async def send_media_group(
+    chat_id: int,
+    media: list[dict],
+    caption: str = "",
+    reply_parameters: dict | None = None,    # <-- NEW
+) -> Optional[list[dict]]:
+    """
+    Send a media group (album).
+    `media` is a list of objects like {"type": "photo", "media": file_id}.
+    Only the first element carries the caption.
+    Returns a list of message objects on success, None on failure.
+    """
+    if not media:
+        return None
+
+    media_payload = []
+    for idx, item in enumerate(media):
+        entry = {
+            "type": "photo",
+            "media": item["media"],
+        }
+        if idx == 0 and caption:
+            entry["caption"] = caption
+        media_payload.append(entry)
+
+    payload = {
+        "chat_id": chat_id,
+        "media": media_payload,
+    }
+    if reply_parameters is not None:          # <-- NEW
+        payload["reply_parameters"] = reply_parameters
+
+    response = await telegram_bot.send_request("sendMediaGroup", payload)
+    if not response.success:
+        logger.error(
+            "Telegram sendMediaGroup failed",
+            extra={
+                "chat_id": chat_id,
+                "error": response.error_message,
+                "status_code": response.status_code,
+            },
+        )
+        return None
+
+    return response.data.get("result")

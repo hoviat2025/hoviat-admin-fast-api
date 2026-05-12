@@ -1,5 +1,5 @@
 # app/models/hilfen_news.py
-from sqlalchemy import Column, BigInteger, String, Text, TIMESTAMP,Integer
+from sqlalchemy import Column, BigInteger, String, Text, TIMESTAMP, Integer
 from sqlalchemy.sql import func
 from app.models.base import Base
 
@@ -17,6 +17,7 @@ class HilfenNews(Base):
     preview_message_id = Column(BigInteger)
     admin_check_message_id = Column(BigInteger)
     admin_check_chat_id = Column(BigInteger)
+    admin_handler_message_id = Column(BigInteger, nullable=True)   # NEW
     decline_message = Column(Text)
     main_channel_message_id = Column(BigInteger)
     main_channel_id = Column(BigInteger)

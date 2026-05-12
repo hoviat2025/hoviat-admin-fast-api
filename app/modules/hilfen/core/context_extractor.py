@@ -1,3 +1,4 @@
+# app/modules/hilfen/core/context_extractor.py
 def extract_context(update: dict) -> dict:
     """
     Normalize Telegram update payloads into a unified context object.
@@ -24,6 +25,7 @@ def extract_context(update: dict) -> dict:
         "media_group_id": None,  # present when part of an album
         "is_album_composite": False,   # True if this update was assembled by album catcher
         "album_photos": None,    # list of photo arrays when composite
+        "reply_to_message_id": None,   # message_id if this message is a reply
     }
 
     # ---- message ----
@@ -48,6 +50,11 @@ def extract_context(update: dict) -> dict:
         context["is_album_composite"] = msg.get("is_album_composite", False)
         context["album_photos"] = msg.get("album_photos")
 
+        # Reply info
+        reply_msg = msg.get("reply_to_message")
+        if reply_msg:
+            context["reply_to_message_id"] = reply_msg.get("message_id")
+
     # ---- edited_message ----
     elif "edited_message" in update:
         msg = update["edited_message"]
@@ -66,6 +73,10 @@ def extract_context(update: dict) -> dict:
         context["media_group_id"] = msg.get("media_group_id")
         context["is_album_composite"] = msg.get("is_album_composite", False)
         context["album_photos"] = msg.get("album_photos")
+
+        reply_msg = msg.get("reply_to_message")
+        if reply_msg:
+            context["reply_to_message_id"] = reply_msg.get("message_id")
 
     # ---- callback_query ----
     elif "callback_query" in update:

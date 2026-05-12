@@ -30,3 +30,7 @@ HOUSE_PREVIEW_DECLINE_PREFIX = "decline_news_house_"
 # House role selection step (rent vs. publish)
 ROLE_RENT_TEXT = "🏠 I want to rent"
 ROLE_PUBLISH_TEXT = "🏠 I want to publish for renting"
+
+# Admin review inline callbacks (used in check_admin_channel)
+ADMIN_CONFIRM_PREFIX = "admin_confirm_house_"
+ADMIN_DECLINE_PREFIX = "admin_decline_house_"
