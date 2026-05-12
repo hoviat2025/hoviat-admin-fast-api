@@ -338,6 +338,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
                         news_id=news_id,
                         contact_group_message_id=contact_msg_id,
                         group_chat_id=group_chat_id,
+                        group_message_id=group_msg_id,
                     )
 
         # ---- 6) Post published comments in admin / hilfen / main groups ----
