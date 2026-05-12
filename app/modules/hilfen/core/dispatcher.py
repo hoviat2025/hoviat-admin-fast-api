@@ -79,6 +79,16 @@ async def _process_album_after_delay(media_group_id: str):
             logger.warning("Album %s timed out with no parts – ignoring.", media_group_id)
             return
 
+        # Sort parts by their message_id (ascending) so the first one is the earliest
+        try:
+            def _get_message_id(part: dict) -> int:
+                msg = part.get("message") or part.get("edited_message", {})
+                return int(msg.get("message_id", 0))
+
+            parts.sort(key=_get_message_id)
+        except Exception:
+            logger.warning("Could not sort album parts by message_id; using original order")
+
         # Use the first part as the template for user/chat info.
         # The first part might be a 'message' or an 'edited_message'.
         first_part = parts[0]
@@ -151,17 +161,19 @@ async def process_telegram_update(update: dict) -> None:
     context = extract_context(update)
     if context["update_type"] == "unknown":
         return
-
-    # --- 3) STATELESS HANDLERS (NO DB SESSION) ---
+    
+    # --- 3) ALBUM COLLECTION ---
+    if await _collect_album_and_possibly_stop(update, context):
+        # This is an album part – the composite will be dispatched later.
+        return
+    
+    # --- 4) STATELESS HANDLERS (NO DB SESSION) ---
     for handler in STATELESS_HANDLERS:
         if await handler.match(context, None):
             await handler.handle(context, None)
             return
 
-    # --- 4) ALBUM COLLECTION (BEFORE ANY DB STEPS) ---
-    if await _collect_album_and_possibly_stop(update, context):
-        # This is an album part – the composite will be dispatched later.
-        return
+
 
     # =======================================================================
     # SCENARIO 1 : Private chat between bot and user

@@ -16,8 +16,9 @@ from app.modules.hilfen.constants import (
     ROLE_PUBLISH_TEXT,
     HOUSE_PREVIEW_CONFIRM_PREFIX,
     HOUSE_PREVIEW_DECLINE_PREFIX,
-    ADMIN_CONFIRM_PREFIX,          # NEW
-    ADMIN_DECLINE_PREFIX,          # NEW
+    ADMIN_CONFIRM_PREFIX,
+    ADMIN_DECLINE_PREFIX,
+    STOP_NEWS_PREFIX,
 )
 
 
@@ -104,7 +105,6 @@ def build_preview_confirm_keyboard(news_type: str, news_id: int) -> list[list[di
 def build_admin_review_keyboard(news_id: int) -> list[list[dict]]:
     """
     Inline keyboard shown to the admin for confirming or declining a news.
-    Callback data prefixes come from the constants module.
     """
     return [
         [
@@ -115,6 +115,30 @@ def build_admin_review_keyboard(news_id: int) -> list[list[dict]]:
             {
                 "text": "❌ Decline",
                 "callback_data": f"{ADMIN_DECLINE_PREFIX}{news_id}",
+            },
+        ]
+    ]
+
+
+def build_admin_published_keyboard(post_url: str) -> list[list[dict]]:
+    """
+    Inline keyboard shown to the admin after a news is published.
+    Contains only a link to the post.
+    """
+    return [[{"text": "🔗 View post", "url": post_url}]]
+
+
+def build_user_published_keyboard(news_id: int, post_url: str) -> list[list[dict]]:
+    """
+    Inline keyboard shown to the user after their news is published.
+    Contains a link to the post and a "Stop the news" button.
+    """
+    return [
+        [
+            {"text": "🔗 View my ad", "url": post_url},
+            {
+                "text": "⏹ Stop the news",
+                "callback_data": f"{STOP_NEWS_PREFIX}{news_id}",
             },
         ]
     ]

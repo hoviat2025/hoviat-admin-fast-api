@@ -4,13 +4,11 @@ Formatting helpers for news previews, admin messages, and comments.
 """
 
 from app.models.hilfen_news import HilfenNews
+from app.models.user import User
 
 
 def format_news_preview(city: str | None, news_text: str) -> str:
-    """
-    Build the preview text shown to the user and later to the admin.
-    For now it simply returns the news_text with an optional city prefix.
-    """
+    """Build the preview text shown to the user and later to the admin."""
     parts = []
     if city:
         parts.append(f"📍 {city}")
@@ -19,9 +17,17 @@ def format_news_preview(city: str | None, news_text: str) -> str:
 
 
 def format_decline_comment(news: HilfenNews, decline_reason: str) -> str:
-    """
-    Build the comment that will be posted in the admin group when a
-    house ad is declined by an admin.
-    """
+    """Build the comment that will be posted in the admin group when a house ad is declined."""
     preview = format_news_preview(news.city, news.news_text or "")
     return f"⚠️ **House ad declined**\n{preview}\n\n**Reason:** {decline_reason}"
+
+
+def format_published_comment(news: HilfenNews) -> str:
+    """Build the comment text that is posted in the various groups when a house ad is published."""
+    preview = format_news_preview(news.city, news.news_text or "")
+    return f"🏠 **New house ad published**\n{preview}"
+
+
+def format_contact_message(user: User) -> str:
+    """Build the contact text that is posted as a comment under the news in the discussion group."""
+    return f"📞 Contact: [Open chat](tg://user?id={user.user_id})"

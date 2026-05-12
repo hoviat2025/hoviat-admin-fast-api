@@ -1,4 +1,4 @@
-# app\modules\hilfen\core\scenarios.py
+# app/modules/hilfen/core/scenarios.py
 """
 Scenario checkers for Telegram updates.
 
@@ -67,7 +67,6 @@ def is_bot_itself(context: dict) -> bool:
     return context.get("user_id") == BOT_SELF_ID
 
 
-
 def is_album_update(context: dict) -> bool:
     """
     True if the update is part of a media album (has media_group_id)
@@ -83,4 +82,14 @@ def is_album_composite(context: dict) -> bool:
     """True if this context represents an assembled album (multiple photos)."""
     return context.get("is_album_composite", False)
 
-# ----- Add more scenario functions as needed -----
+
+def is_auto_forwarded_comment(context: dict) -> bool:
+    """
+    True if the update is an automatically‑forwarded comment from a channel
+    into its discussion group.
+    """
+    return (
+        context.get("is_automatic_forward") is True
+        and context.get("sender_chat_type") == "channel"
+        and context.get("forward_origin_message_id") is not None
+    )

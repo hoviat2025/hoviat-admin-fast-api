@@ -34,3 +34,6 @@ ROLE_PUBLISH_TEXT = "🏠 I want to publish for renting"
 # Admin review inline callbacks (used in check_admin_channel)
 ADMIN_CONFIRM_PREFIX = "admin_confirm_house_"
 ADMIN_DECLINE_PREFIX = "admin_decline_house_"
+
+# Stop house news (user action)
+STOP_NEWS_PREFIX = "stop_news_house_"

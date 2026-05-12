@@ -57,11 +57,15 @@ from app.modules.hilfen.handlers.stateful.main_menu_handlers import (
 from app.modules.hilfen.handlers.stateful.house_news_admin_handlers import (   # NEW
     AdminDeclineCallbackHandler,
     AdminDeclineMessageHandler,
+    AdminConfirmCallbackHandler,
 )
+
+from app.modules.hilfen.handlers.stateless.comment_catch_handler import CommentCatchHandler
 
 STATELESS_HANDLERS = [
     IgnoreBotMessagesHandler(),
     SamCommandHandler(),
+    CommentCatchHandler(),
 ]
 
 STATEFUL_HANDLERS = [
@@ -116,6 +120,7 @@ STATEFUL_HANDLERS = [
     # Admin review handlers (check‑admin channel)
     AdminDeclineCallbackHandler(),
     AdminDeclineMessageHandler(),
+    AdminConfirmCallbackHandler(),
 ]
 
 FALLBACK_HANDLERS = [

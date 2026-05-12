@@ -21,11 +21,17 @@ def extract_context(update: dict) -> dict:
         "first_name": None,
         "last_name": None,
         "contact": None,
-        "photo": None,           # list of photo size dicts (largest last)
-        "media_group_id": None,  # present when part of an album
-        "is_album_composite": False,   # True if this update was assembled by album catcher
-        "album_photos": None,    # list of photo arrays when composite
-        "reply_to_message_id": None,   # message_id if this message is a reply
+        "photo": None,
+        "media_group_id": None,
+        "is_album_composite": False,
+        "album_photos": None,
+        "reply_to_message_id": None,
+        "message_id": None,                    # <-- new
+        # Auto‑forwarded comment fields
+        "is_automatic_forward": False,
+        "sender_chat_id": None,
+        "sender_chat_type": None,
+        "forward_origin_message_id": None,
     }
 
     # ---- message ----
@@ -45,15 +51,22 @@ def extract_context(update: dict) -> dict:
         context["contact"] = msg.get("contact")
         context["photo"] = msg.get("photo")
         context["media_group_id"] = msg.get("media_group_id")
-
-        # Composite flag & extra album data
         context["is_album_composite"] = msg.get("is_album_composite", False)
         context["album_photos"] = msg.get("album_photos")
+        context["message_id"] = msg.get("message_id")
 
-        # Reply info
         reply_msg = msg.get("reply_to_message")
         if reply_msg:
             context["reply_to_message_id"] = reply_msg.get("message_id")
+
+        context["is_automatic_forward"] = msg.get("is_automatic_forward", False)
+        sender_chat = msg.get("sender_chat")
+        if sender_chat:
+            context["sender_chat_id"] = sender_chat.get("id")
+            context["sender_chat_type"] = sender_chat.get("type")
+        forward_origin = msg.get("forward_origin")
+        if forward_origin and isinstance(forward_origin, dict):
+            context["forward_origin_message_id"] = forward_origin.get("message_id")
 
     # ---- edited_message ----
     elif "edited_message" in update:
@@ -73,10 +86,20 @@ def extract_context(update: dict) -> dict:
         context["media_group_id"] = msg.get("media_group_id")
         context["is_album_composite"] = msg.get("is_album_composite", False)
         context["album_photos"] = msg.get("album_photos")
+        context["message_id"] = msg.get("message_id")
 
         reply_msg = msg.get("reply_to_message")
         if reply_msg:
             context["reply_to_message_id"] = reply_msg.get("message_id")
+
+        context["is_automatic_forward"] = msg.get("is_automatic_forward", False)
+        sender_chat = msg.get("sender_chat")
+        if sender_chat:
+            context["sender_chat_id"] = sender_chat.get("id")
+            context["sender_chat_type"] = sender_chat.get("type")
+        forward_origin = msg.get("forward_origin")
+        if forward_origin and isinstance(forward_origin, dict):
+            context["forward_origin_message_id"] = forward_origin.get("message_id")
 
     # ---- callback_query ----
     elif "callback_query" in update:
