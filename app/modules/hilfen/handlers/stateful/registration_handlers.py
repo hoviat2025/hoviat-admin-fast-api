@@ -48,7 +48,7 @@ class CountryRegistrationHandler(BaseHandler):
         country = context.get("text", "").strip()
 
         if not country:
-            await send_message(chat_id, "Please enter your country name.")
+            await send_message(chat_id, "لطفاً نام کشور خود را وارد کنید.")
             return
 
         try:
@@ -67,13 +67,13 @@ class CountryRegistrationHandler(BaseHandler):
             await channel_service.execute(user_id=user_id, update_source="hilfenbot")
 
             await send_message(
-                chat_id, f"Country saved as {country}. Now, what's your first name?"
+                chat_id, f"کشور {country} ذخیره شد. حالا نام خود را وارد کنید:"
             )
 
         except Exception as e:
             await db.rollback()
             logger.error(f"Error saving country for user {user_id}: {e}")
-            await send_message(chat_id, "Sorry, something went wrong. Please try again.")
+            await send_message(chat_id, "متأسفیم، مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
 
 
 class FirstNameRegistrationHandler(BaseHandler):
@@ -95,7 +95,7 @@ class FirstNameRegistrationHandler(BaseHandler):
         first_name = context.get("text", "").strip()
 
         if not first_name:
-            await send_message(chat_id, "Please enter your first name.")
+            await send_message(chat_id, "لطفاً نام خود را وارد کنید.")
             return
 
         try:
@@ -115,13 +115,13 @@ class FirstNameRegistrationHandler(BaseHandler):
             await channel_service.execute(user_id=user_id, update_source="hilfenbot")
 
             await send_message(
-                chat_id, f"Thanks, {first_name}! Now, what's your last name?"
+                chat_id, f"متشکرم {first_name} عزیز! حالا نام خانوادگی خود را وارد کنید:"
             )
 
         except Exception as e:
             await db.rollback()
             logger.error(f"Error saving first name for user {user_id}: {e}")
-            await send_message(chat_id, "Sorry, something went wrong. Please try again.")
+            await send_message(chat_id, "متأسفیم، مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
 
 
 class LastNameRegistrationHandler(BaseHandler):
@@ -143,7 +143,7 @@ class LastNameRegistrationHandler(BaseHandler):
         last_name = context.get("text", "").strip()
 
         if not last_name:
-            await send_message(chat_id, "Please enter your last name.")
+            await send_message(chat_id, "لطفاً نام خانوادگی خود را وارد کنید.")
             return
 
         try:
@@ -162,13 +162,13 @@ class LastNameRegistrationHandler(BaseHandler):
 
             await request_contact(
                 chat_id,
-                "Great! Now please share your phone number using the button below:",
+                "عالی! حالا لطفاً با استفاده از دکمه زیر شماره تلفن خود را به اشتراک بگذارید:",
             )
 
         except Exception as e:
             await db.rollback()
             logger.error(f"Error saving last name for user {user_id}: {e}")
-            await send_message(chat_id, "Sorry, something went wrong. Please try again.")
+            await send_message(chat_id, "متأسفیم، مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
 
 
 class PhoneRegistrationHandler(BaseHandler):
@@ -191,13 +191,13 @@ class PhoneRegistrationHandler(BaseHandler):
 
         if not contact or "phone_number" not in contact:
             await send_message(
-                chat_id, "Please share your phone number using the contact sharing button."
+                chat_id, "لطفاً شماره تلفن خود را با استفاده از دکمه اشتراک‌گذاری ارسال کنید."
             )
             return
 
         phone_number = contact.get("phone_number", "").strip()
         if not phone_number:
-            await send_message(chat_id, "Invalid phone number. Please try again.")
+            await send_message(chat_id, "شماره تلفن نامعتبر است. لطفاً دوباره تلاش کنید.")
             return
 
         try:
@@ -211,7 +211,7 @@ class PhoneRegistrationHandler(BaseHandler):
             await db.commit()
 
             # Remove the contact sharing keyboard
-            await remove_keyboard(chat_id, "Phone number received. Completing registration...")
+            await remove_keyboard(chat_id, "شماره تلفن دریافت شد. در حال تکمیل ثبت‌نام...")
 
             # Update channel posts after saving phone number
             channel_service = UpdateChannelPostService(db)
@@ -222,20 +222,20 @@ class PhoneRegistrationHandler(BaseHandler):
             await db.commit()
 
             user = await user_repo.get_by_id(user_id)
-            greeting_name = user.first_name if user else "there"
+            greeting_name = user.first_name if user else "کاربر"
 
             # Show the main menu keyboard now that registration is complete
             main_menu = get_main_menu_keyboard()
             await send_message_with_keyboard(
                 chat_id,
-                f"Registration complete! Welcome {greeting_name}!",
+                f"ثبت‌نام کامل شد! خوش آمدید {greeting_name} عزیز!",
                 keyboard=main_menu,
             )
 
         except Exception as e:
             await db.rollback()
             logger.error(f"Error saving phone number for user {user_id}: {e}")
-            await send_message(chat_id, "Sorry, something went wrong. Please try again.")
+            await send_message(chat_id, "متأسفیم، مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
 
 
 class InvalidPhoneInputHandler(BaseHandler):
@@ -254,5 +254,5 @@ class InvalidPhoneInputHandler(BaseHandler):
     async def handle(self, context: dict, db: AsyncSession) -> None:
         chat_id = context.get("chat_id")
         await request_contact(
-            chat_id, "Please use the contact sharing button below to share your phone number:"
+            chat_id, "لطفاً برای ارسال شماره تلفن خود از دکمه اشتراک‌گذاری زیر استفاده کنید:"
         )

@@ -227,7 +227,7 @@ async def process_telegram_update(update: dict) -> None:
                 # 4d) Ban check
                 ban_service = BanService(db)
                 if await ban_service.is_banned(user):
-                    await send_message(context["chat_id"], "You are banned.")
+                    await send_message(context["chat_id"], "شما مسدود شده‌اید.")
                     return
 
                 # 4e) Registration checkpoint

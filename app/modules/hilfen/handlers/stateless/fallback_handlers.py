@@ -44,5 +44,5 @@ class UnhandledPrivateMessageHandler(BaseHandler):
         chat_id = context.get("chat_id")
         await send_message(
             chat_id, 
-            "I didn't understand that. Please use /start to begin or try again."
+            "متوجه نشدم. لطفاً از /start برای شروع استفاده کنید یا دوباره تلاش کنید."
         )

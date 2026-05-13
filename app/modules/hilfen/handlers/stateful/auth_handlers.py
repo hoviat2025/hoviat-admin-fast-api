@@ -41,11 +41,11 @@ class StartCommandHandler(BaseHandler):
         ])
 
         if required_fields_present:
-            greeting_name = user.first_name or "there"
+            greeting_name = user.first_name or "کاربر"
             main_menu = get_main_menu_keyboard()
             await send_message_with_keyboard(
                 chat_id,
-                f"Hi {greeting_name}! Welcome back!",
+                f"سلام {greeting_name} عزیز! خوش آمدید!",
                 keyboard=main_menu,
             )
         # If registration is incomplete, do nothing – the dispatcher already
