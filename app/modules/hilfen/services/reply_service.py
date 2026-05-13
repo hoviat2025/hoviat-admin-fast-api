@@ -61,7 +61,6 @@ class ReplyService:
         return {
             "message_id": target_message_id,
             "chat_id": target_chat_id,
-            "quote": "⭐" * stars,
         }
 
     async def build_hilfen_channel_reply(
