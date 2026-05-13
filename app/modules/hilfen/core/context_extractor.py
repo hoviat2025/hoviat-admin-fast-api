@@ -4,8 +4,8 @@ def extract_context(update: dict) -> dict:
     Normalize Telegram update payloads into a unified context object.
 
     Extracts fields common to all handlers: user info, chat info, text,
-    contact, photo array, media_group_id (for albums), and a flag indicating
-    whether this update is an assembled album composite.
+    contact, photo array, media_group_id (for albums), external reply info,
+    and a flag indicating whether this update is an assembled album composite.
     """
 
     context = {
@@ -34,6 +34,8 @@ def extract_context(update: dict) -> dict:
         "forward_origin_message_id": None,
         # Extra text from callback_query's replied message (admin preview edits)
         "callback_query_reply_text": None,
+        # ID of an externally replied message (e.g. channel comment reply)
+        "external_reply_message_id": None,
     }
 
     # ---- message ----
@@ -60,6 +62,11 @@ def extract_context(update: dict) -> dict:
         reply_msg = msg.get("reply_to_message")
         if reply_msg:
             context["reply_to_message_id"] = reply_msg.get("message_id")
+
+        # External reply (e.g. linked channel comment)
+        external_reply = msg.get("external_reply")
+        if external_reply and isinstance(external_reply, dict):
+            context["external_reply_message_id"] = external_reply.get("message_id")
 
         context["is_automatic_forward"] = msg.get("is_automatic_forward", False)
         sender_chat = msg.get("sender_chat")
@@ -94,6 +101,10 @@ def extract_context(update: dict) -> dict:
         if reply_msg:
             context["reply_to_message_id"] = reply_msg.get("message_id")
 
+        external_reply = msg.get("external_reply")
+        if external_reply and isinstance(external_reply, dict):
+            context["external_reply_message_id"] = external_reply.get("message_id")
+
         context["is_automatic_forward"] = msg.get("is_automatic_forward", False)
         sender_chat = msg.get("sender_chat")
         if sender_chat:
@@ -127,5 +138,10 @@ def extract_context(update: dict) -> dict:
             reply_text = reply_msg.get("text") or reply_msg.get("caption")
             if reply_text:
                 context["callback_query_reply_text"] = reply_text
+
+        # If the callback message itself has an external reply, surface its id.
+        external_reply = msg.get("external_reply")
+        if external_reply and isinstance(external_reply, dict):
+            context["external_reply_message_id"] = external_reply.get("message_id")
 
     return context

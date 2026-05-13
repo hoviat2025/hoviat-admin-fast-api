@@ -169,8 +169,8 @@ async def _handle_special_channel_comment(update: dict, context: dict) -> bool:
     # they refer to the same channel post.
     original_post_id = context["forward_origin_message_id"]
     group_msg_id = context["message_id"]
-
-    if None in (original_post_id, group_msg_id):
+    external_reply_message_id =context["external_reply_message_id"]
+    if None in (original_post_id, group_msg_id,external_reply_message_id):
         logger.warning("Missing IDs for %s comment; skipping.", service_kind)
         return True   # still stop processing, nothing we can do
 
@@ -186,11 +186,15 @@ async def _handle_special_channel_comment(update: dict, context: dict) -> bool:
                                 message_id=original_post_id              # channel post ID
                             ),
                             external_reply=HilfenExternalReply(
-                                message_id=original_post_id              # same ID as lookup
+                                message_id=int(external_reply_message_id)               # external_reply_message_id 
                             ),
                         )
                     )
-                )
+                )                
+                # service = SetHilfenMessageService(db)
+                # request = SetHilfenMessageRequest(
+                #     original_update=update
+                # )
             else:  # admin
                 service = SetAdminMessageService(db)
                 request = SetAdminMessageRequest(
@@ -201,7 +205,7 @@ async def _handle_special_channel_comment(update: dict, context: dict) -> bool:
                                 message_id=original_post_id
                             ),
                             external_reply=AdminExternalReply(
-                                message_id=original_post_id
+                                message_id=external_reply_message_id
                             ),
                         )
                     )
