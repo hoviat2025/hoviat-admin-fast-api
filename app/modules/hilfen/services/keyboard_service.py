@@ -19,20 +19,27 @@ from app.modules.hilfen.constants import (
     ADMIN_CONFIRM_PREFIX,
     ADMIN_DECLINE_PREFIX,
     STOP_NEWS_PREFIX,
+    PREVIEW_CONFIRM_TEXT,
+    PREVIEW_DECLINE_TEXT,
+    ADMIN_CONFIRM_TEXT,
+    ADMIN_DECLINE_TEXT,
+    VIEW_POST_TEXT,
+    VIEW_MY_AD_TEXT,
+    STOP_NEWS_TEXT,
 )
 
 
 def get_main_menu_keyboard() -> list[list[dict]]:
     return [
         [
-            {"text": "🏠 House 🏠"},
-            {"text": "💶 Euro Exchange 💶"},
-            {"text": "🔖 Work and Needs 💼"},
+            {"text": "🏠 خانه 🏠"},
+            {"text": "💶 تبادل یورو 💶"},
+            {"text": "🔖 کار و نیازمندی‌ها 💼"},
         ],
         [
-            {"text": "👤 My Profile 👤"},
-            {"text": "📁 My Ads 📁"},
-            {"text": "❔ Help and Support 📩"},
+            {"text": "👤 پروفایل من 👤"},
+            {"text": "📁 آگهی‌های من 📁"},
+            {"text": "❔ راهنما و پشتیبانی 📩"},
         ],
     ]
 
@@ -91,11 +98,11 @@ def build_preview_confirm_keyboard(news_type: str, news_id: int) -> list[list[di
     return [
         [
             {
-                "text": "✅ Confirm",
+                "text": PREVIEW_CONFIRM_TEXT,
                 "callback_data": f"{confirm_prefix}{news_id}",
             },
             {
-                "text": "❌ Decline",
+                "text": PREVIEW_DECLINE_TEXT,
                 "callback_data": f"{decline_prefix}{news_id}",
             },
         ]
@@ -109,11 +116,11 @@ def build_admin_review_keyboard(news_id: int) -> list[list[dict]]:
     return [
         [
             {
-                "text": "✅ Confirm",
+                "text": ADMIN_CONFIRM_TEXT,
                 "callback_data": f"{ADMIN_CONFIRM_PREFIX}{news_id}",
             },
             {
-                "text": "❌ Decline",
+                "text": ADMIN_DECLINE_TEXT,
                 "callback_data": f"{ADMIN_DECLINE_PREFIX}{news_id}",
             },
         ]
@@ -125,7 +132,7 @@ def build_admin_published_keyboard(post_url: str) -> list[list[dict]]:
     Inline keyboard shown to the admin after a news is published.
     Contains only a link to the post.
     """
-    return [[{"text": "🔗 View post", "url": post_url}]]
+    return [[{"text": VIEW_POST_TEXT, "url": post_url}]]
 
 
 def build_user_published_keyboard(news_id: int, post_url: str) -> list[list[dict]]:
@@ -135,9 +142,9 @@ def build_user_published_keyboard(news_id: int, post_url: str) -> list[list[dict
     """
     return [
         [
-            {"text": "🔗 View my ad", "url": post_url},
+            {"text": VIEW_MY_AD_TEXT, "url": post_url},
             {
-                "text": "⏹ Stop the news",
+                "text": STOP_NEWS_TEXT,
                 "callback_data": f"{STOP_NEWS_PREFIX}{news_id}",
             },
         ]
@@ -149,4 +156,4 @@ def build_user_stopped_keyboard(post_url: str) -> list[list[dict]]:
     Inline keyboard shown to the user after they stop the news.
     Contains only the link to the post (no stop button).
     """
-    return [[{"text": "🔗 View my ad", "url": post_url}]]
+    return [[{"text": VIEW_MY_AD_TEXT, "url": post_url}]]

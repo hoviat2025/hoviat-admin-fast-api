@@ -20,7 +20,7 @@ from app.modules.hilfen.constants import (
     ROLE_PUBLISH_TEXT,
     HOUSE_PREVIEW_CONFIRM_PREFIX,
     HOUSE_PREVIEW_DECLINE_PREFIX,
-    STOP_NEWS_PREFIX,    
+    STOP_NEWS_PREFIX,
 )
 from app.modules.hilfen.repositories.bot_state import BotStateRepository
 from app.modules.hilfen.repositories.news_repository import NewsRepository
@@ -44,13 +44,14 @@ from app.modules.hilfen.services.keyboard_service import (
     build_photos_keyboard,
     build_preview_confirm_keyboard,
     build_admin_review_keyboard,
-    build_user_stopped_keyboard,   
+    build_user_stopped_keyboard,
 )
 from app.modules.hilfen.services.city_service import get_all_cities, is_valid_city
 from app.modules.hilfen.services.news_format_service import (
     format_news_preview,
-    format_stopped_news,                   
+    format_stopped_news,
 )
+
 from app.modules.hilfen.services.reply_service import ReplyService
 
 
@@ -104,7 +105,7 @@ class HouseCityCancelHandler(BaseHandler):
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await _go_main_menu(
             db, context["user_id"], context["chat_id"],
-            "❌ House ad creation cancelled.",
+            "❌ ایجاد آگهی خانه لغو شد.",
         )
 
 
@@ -130,7 +131,7 @@ class HouseCityAnotherCityHandler(BaseHandler):
         keyboard = build_cancel_keyboard()
         await send_message_with_keyboard(
             chat_id,
-            "📍 Please type the name of your city:",
+            "📍 لطفاً نام شهر خود را تایپ کنید:",
             keyboard,
         )
 
@@ -162,7 +163,7 @@ class HouseCityInputHandler(BaseHandler):
             keyboard = build_city_keyboard(cities)
             await send_message_with_keyboard(
                 chat_id,
-                f"❌ '{city_name}' is not in the list. Please choose from the keyboard or use 'Another City'.",
+                f"❌ '{city_name}' در لیست نیست. لطفاً از کیبورد یکی را انتخاب کنید یا «شهر دیگر» را بزنید.",
                 keyboard,
             )
             return
@@ -177,8 +178,8 @@ class HouseCityInputHandler(BaseHandler):
 
         if not isinstance(news.id, int):
             logger.error(f"Created news has non-int id: {news.id!r}")
-            await send_message(chat_id, "⚠️ Internal error. Please try again later.")
-            await _go_main_menu(db, user_id, chat_id, "Back to main menu.")
+            await send_message(chat_id, "⚠️ خطای داخلی. لطفاً بعداً دوباره تلاش کنید.")
+            await _go_main_menu(db, user_id, chat_id, "بازگشت به منوی اصلی.")
             return
 
         news_id = news.id
@@ -191,7 +192,7 @@ class HouseCityInputHandler(BaseHandler):
         keyboard = build_role_keyboard()
         await send_message_with_keyboard(
             chat_id,
-            "✅ City saved. Now please choose your role:",
+            "✅ شهر ذخیره شد. حالا لطفاً نقش خود را انتخاب کنید:",
             keyboard,
         )
 
@@ -214,7 +215,7 @@ class HouseCityCustomCancelHandler(BaseHandler):
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await _go_main_menu(
             db, context["user_id"], context["chat_id"],
-            "❌ House ad creation cancelled.",
+            "❌ ایجاد آگهی خانه لغو شد.",
         )
 
 
@@ -243,8 +244,8 @@ class HouseCityCustomInputHandler(BaseHandler):
 
         if not isinstance(news.id, int):
             logger.error(f"Created news has non-int id: {news.id!r}")
-            await send_message(chat_id, "⚠️ Internal error. Please try again later.")
-            await _go_main_menu(db, user_id, chat_id, "Back to main menu.")
+            await send_message(chat_id, "⚠️ خطای داخلی. لطفاً بعداً دوباره تلاش کنید.")
+            await _go_main_menu(db, user_id, chat_id, "بازگشت به منوی اصلی.")
             return
 
         news_id = news.id
@@ -257,7 +258,7 @@ class HouseCityCustomInputHandler(BaseHandler):
         keyboard = build_role_keyboard()
         await send_message_with_keyboard(
             chat_id,
-            f"✅ City '{city_name}' saved. Now please choose your role:",
+            f"✅ شهر '{city_name}' ذخیره شد. حالا لطفاً نقش خود را انتخاب کنید:",
             keyboard,
         )
 
@@ -292,7 +293,7 @@ class HouseNewsRoleCancelHandler(BaseHandler):
                 logger.error(f"Error deleting news {news_id}: {e}")
         await _go_main_menu(
             db, context["user_id"], context["chat_id"],
-            "❌ House ad creation cancelled.",
+            "❌ ایجاد آگهی خانه لغو شد.",
         )
 
 
@@ -339,8 +340,8 @@ async def _handle_role_selection(context: dict, db: AsyncSession, sub_type: str)
     user_id = context["user_id"]
 
     if news_id is None:
-        await send_message(chat_id, "⚠️ Error. Please start again.")
-        await _go_main_menu(db, user_id, chat_id, "Main menu")
+        await send_message(chat_id, "⚠️ خطا. لطفاً دوباره شروع کنید.")
+        await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
         return
 
     news_repo = NewsRepository(db)
@@ -355,7 +356,7 @@ async def _handle_role_selection(context: dict, db: AsyncSession, sub_type: str)
     keyboard = build_cancel_keyboard()
     await send_message_with_keyboard(
         chat_id,
-        f"✅ Role saved. Now please send the description of your house:",
+        "✅ نقش ذخیره شد. حالا لطفاً توضیحات خانه خود را ارسال کنید:",
         keyboard,
     )
 
@@ -382,7 +383,7 @@ class HouseNewsRoleInvalidHandler(BaseHandler):
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await send_message(
             context["chat_id"],
-            "⚠️ Please choose one of the options below:",
+            "⚠️ لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
         )
 
 
@@ -414,7 +415,7 @@ class HouseNewsDescriptionCancelHandler(BaseHandler):
                 logger.error(f"Error deleting news {news_id}: {e}")
         await _go_main_menu(
             db, context["user_id"], context["chat_id"],
-            "❌ House ad creation cancelled.",
+            "❌ ایجاد آگهی خانه لغو شد.",
         )
 
 
@@ -438,8 +439,8 @@ class HouseNewsDescriptionInputHandler(BaseHandler):
         news_id = _extract_newsid(context["user_state"])
 
         if news_id is None:
-            await send_message(chat_id, "⚠️ An error occurred. Please start again.")
-            await _go_main_menu(db, user_id, chat_id, "Back to main menu.")
+            await send_message(chat_id, "⚠️ خطایی رخ داد. لطفاً دوباره شروع کنید.")
+            await _go_main_menu(db, user_id, chat_id, "بازگشت به منوی اصلی.")
             return
 
         news_repo = NewsRepository(db)
@@ -449,9 +450,9 @@ class HouseNewsDescriptionInputHandler(BaseHandler):
             logger.exception(f"Update failed for user {user_id}, news {news_id}")
             await send_message(
                 chat_id,
-                "❌ A database error occurred. Please try again later."
+                "❌ خطای پایگاه داده رخ داد. لطفاً بعداً دوباره تلاش کنید."
             )
-            await _go_main_menu(db, user_id, chat_id, "Back to main menu.")
+            await _go_main_menu(db, user_id, chat_id, "بازگشت به منوی اصلی.")
             return
 
         # Move to photo step
@@ -464,8 +465,8 @@ class HouseNewsDescriptionInputHandler(BaseHandler):
         keyboard = build_photos_keyboard()
         await send_message_with_keyboard(
             chat_id,
-            "🖼️ Now you can send one or more photos of your house "
-            "(as an album or single photo), or skip this step:",
+            "🖼️ حالا می‌توانید یک یا چند عکس از خانه خود بفرستید "
+            "(به صورت آلبوم یا تک‌عکس)، یا این مرحله را رد کنید:",
             keyboard,
         )
 
@@ -500,7 +501,7 @@ class HouseNewsPhotosCancelHandler(BaseHandler):
                 logger.error(f"Error deleting news {news_id}: {e}")
         await _go_main_menu(
             db, context["user_id"], context["chat_id"],
-            "❌ House ad creation cancelled.",
+            "❌ ایجاد آگهی خانه لغو شد.",
         )
 
 
@@ -526,23 +527,23 @@ class HouseNewsPhotosSkipHandler(BaseHandler):
         user_id = context["user_id"]
 
         if news_id is None:
-            await send_message(chat_id, "⚠️ Error. Please start again.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ خطا. لطفاً دوباره شروع کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         news_repo = NewsRepository(db)
         news = await news_repo.get_by_id(news_id)
         if not news:
-            await send_message(chat_id, "⚠️ News not found. Please start again.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ آگهی یافت نشد. لطفاً دوباره شروع کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         preview_text = format_news_preview(news.city, news.news_text or "")
 
         preview_msg_id = await send_message_return_id(chat_id, preview_text)
         if preview_msg_id is None:
-            await send_message(chat_id, "⚠️ Could not send preview, please try again later.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ پیش‌نمایش ارسال نشد، لطفاً بعداً تلاش کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         await news_repo.update_news(news_id=news_id, preview_message_id=preview_msg_id)
@@ -556,7 +557,7 @@ class HouseNewsPhotosSkipHandler(BaseHandler):
         inline_kb = build_preview_confirm_keyboard(NEWS_TYPE, news_id)
         handle_msg_id = await send_message_with_inline_keyboard(
             chat_id,
-            "🔍 This is the preview of your news. Do you confirm?",
+            "🔍 این پیش‌نمایش آگهی شماست. آیا تایید می‌کنید؟",
             inline_kb,
             reply_to_message_id=preview_msg_id,
         )
@@ -586,15 +587,15 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
         user_id = context["user_id"]
 
         if news_id is None:
-            await send_message(chat_id, "⚠️ Error. Please start again.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ خطا. لطفاً دوباره شروع کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         news_repo = NewsRepository(db)
         news = await news_repo.get_by_id(news_id)
         if not news:
-            await send_message(chat_id, "⚠️ News not found. Please start again.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ آگهی یافت نشد. لطفاً دوباره شروع کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         media_objects = []
@@ -636,8 +637,8 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
                 preview_msg_ids = [m["message_id"] for m in msg_results]
 
         if not preview_msg_ids:
-            await send_message(chat_id, "⚠️ Failed to send preview. Please try again later.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ ارسال پیش‌نمایش ناموفق بود. لطفاً بعداً تلاش کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         preview_msg_id = preview_msg_ids[0]
@@ -652,7 +653,7 @@ class HouseNewsPhotosMediaHandler(BaseHandler):
         inline_kb = build_preview_confirm_keyboard(NEWS_TYPE, news_id)
         handle_msg_id = await send_message_with_inline_keyboard(
             chat_id,
-            "🔍 This is the preview of your news. Do you confirm?",
+            "🔍 این پیش‌نمایش آگهی شماست. آیا تایید می‌کنید؟",
             inline_kb,
             reply_to_message_id=preview_msg_id,
         )
@@ -681,9 +682,9 @@ class HouseNewsPhotosInvalidHandler(BaseHandler):
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await send_message(
             context["chat_id"],
-            "📎 Please send photos (single or album), or use the buttons below:\n"
+            "📎 لطفاً عکس بفرستید (تکی یا آلبوم) یا از دکمه‌های زیر استفاده کنید:\n"
             f"• {SKIP_PHOTOS_BUTTON_TEXT}\n"
-            f"• Cancel",
+            f"• لغو",
         )
 
 
@@ -721,8 +722,8 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         news_repo = NewsRepository(db)
         news = await news_repo.get_by_id(cb_news_id)
         if not news:
-            await send_message(chat_id, "⚠️ News not found. Please start again.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ آگهی یافت نشد. لطفاً دوباره شروع کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         # ------------------------------------------------
@@ -731,14 +732,14 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         if news.user_handle_message_id:
             await edit_message_text(
                 chat_id, news.user_handle_message_id,
-                "✅ Your news has been submitted for review."
+                "✅ آگهی شما برای بررسی ارسال شد."
             )
             await edit_message_reply_markup(
                 chat_id, news.user_handle_message_id,
                 reply_markup={"inline_keyboard": []}
             )
         else:
-            await send_message(chat_id, "✅ Your news has been submitted for review.")
+            await send_message(chat_id, "✅ آگهی شما برای بررسی ارسال شد.")
 
         # ------------------------------------------------
         # 2. Build the cross‑chat reply for the admin channel
@@ -761,8 +762,8 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             check_admin_channel = int(settings.CHECK_ADMIN_CHANNEL_ID)
         except (ValueError, TypeError):
             logger.error("CHECK_ADMIN_CHANNEL_ID is not a valid integer")
-            await send_message(chat_id, "⚠️ Configuration error. Please contact support.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ خطای پیکربندی. لطفاً با پشتیبانی تماس بگیرید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         admin_msg_id = None
@@ -797,8 +798,8 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
             )
 
         if admin_msg_id is None:
-            await send_message(chat_id, "⚠️ Could not forward to review, please try again later.")
-            await _go_main_menu(db, user_id, chat_id, "Main menu")
+            await send_message(chat_id, "⚠️ ارسال برای بررسی ناموفق بود، لطفاً بعداً تلاش کنید.")
+            await _go_main_menu(db, user_id, chat_id, "منوی اصلی")
             return
 
         # Save the preview message ID (same as before)
@@ -815,7 +816,7 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         admin_kb = build_admin_review_keyboard(cb_news_id)
         handler_msg_id = await send_message_with_inline_keyboard(
             check_admin_channel,
-            "📬 **New house ad for review**\nPlease confirm or decline:",
+            "📬 **آگهی جدید خانه برای بررسی**\nلطفاً تایید یا رد کنید:",
             admin_kb,
             reply_to_message_id=admin_msg_id,   # reply in the same chat
         )
@@ -828,7 +829,7 @@ class HouseNewsPreviewConfirmHandler(BaseHandler):
         # ------------------------------------------------
         # 5. Return the user to the main menu
         # ------------------------------------------------
-        await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
+        await _go_main_menu(db, user_id, chat_id, "🏠 منوی اصلی")
 
 class HouseNewsPreviewDeclineHandler(BaseHandler):
     """User declines the preview – delete news, edit the inline‑keyboard message, clean up."""
@@ -859,27 +860,27 @@ class HouseNewsPreviewDeclineHandler(BaseHandler):
         news_repo = NewsRepository(db)
         news = await news_repo.get_by_id(cb_news_id)
         if not news:
-            await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
+            await _go_main_menu(db, user_id, chat_id, "🏠 منوی اصلی")
             return
 
         if news.user_handle_message_id:
             await edit_message_text(
                 chat_id, news.user_handle_message_id,
-                "❌ The news was cancelled."
+                "❌ آگهی لغو شد."
             )
             await edit_message_reply_markup(
                 chat_id, news.user_handle_message_id,
                 reply_markup={"inline_keyboard": []}
             )
         else:
-            await send_message(chat_id, "❌ The news was cancelled.")
+            await send_message(chat_id, "❌ آگهی لغو شد.")
 
         try:
             await news_repo.delete_news(cb_news_id)
         except Exception as e:
             logger.error(f"Error deleting news {cb_news_id}: {e}")
 
-        await _go_main_menu(db, user_id, chat_id, "🏠 Main menu")
+        await _go_main_menu(db, user_id, chat_id, "🏠 منوی اصلی")
 
 
 class HouseNewsPreviewFallbackHandler(BaseHandler):
@@ -908,13 +909,13 @@ class HouseNewsPreviewFallbackHandler(BaseHandler):
         if reply_to:
             await send_message_with_reply(
                 chat_id,
-                "⚠️ Please use the buttons above to confirm or decline your news preview.",
+                "⚠️ لطفاً برای تایید یا رد پیش‌نمایش از دکمه‌های بالا استفاده کنید.",
                 reply_to_message_id=reply_to,
             )
         else:
             await send_message(
                 chat_id,
-                "⚠️ Please use the buttons to confirm or decline your news preview.",
+                "⚠️ لطفاً برای تایید یا رد پیش‌نمایش از دکمه‌ها استفاده کنید.",
             )
 
 
@@ -940,7 +941,6 @@ class HouseNewsStopCallbackHandler(BaseHandler):
 
         # Extract news id from callback data (format: stop_news_<type>_<id>)
         try:
-            # Example: stop_news_house_18 → id = 18
             news_id = int(data.rsplit("_", 1)[-1])
         except (ValueError, IndexError):
             logger.warning(f"Invalid stop callback data: {data}")
@@ -950,7 +950,7 @@ class HouseNewsStopCallbackHandler(BaseHandler):
         news = await news_repo.get_by_id(news_id)
         if not news or news.status != "published":
             # Already stopped or never published – nothing to do
-            await send_message(chat_id, "⚠️ This ad is no longer active.")
+            await send_message(chat_id, "⚠️ این آگهی دیگر فعال نیست.")
             return
 
         # 1) Mark as stopped in the database
@@ -970,7 +970,7 @@ class HouseNewsStopCallbackHandler(BaseHandler):
             await edit_message_text(
                 news.group_chat_id,
                 news.contact_group_message_id,
-                "⛔️ This ad has been stopped. Please refer to the main post above.",
+                "⛔️ این آگهی متوقف شده است. لطفاً به پست اصلی بالا مراجعه کنید.",
             )
 
         # 4) Edit the user’s handler message (keep only the “View my ad” button)

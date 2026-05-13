@@ -22,7 +22,7 @@ from app.modules.hilfen.services.city_service import get_all_cities
 # ---------------------------------------------------------------------------
 class HouseButtonHandler(BaseHandler):
     """
-    Triggered by the "🏠 House 🏠" button when the user is at the main menu.
+    Triggered by the "🏠 خانه 🏠" button when the user is at the main menu.
 
     Sets the user state to 'news_house_city' and presents the city keyboard.
     """
@@ -30,7 +30,7 @@ class HouseButtonHandler(BaseHandler):
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
             context.get("update_type") == "message"
-            and context.get("text") == "🏠 House 🏠"
+            and context.get("text") == "🏠 خانه 🏠"
             and context.get("user_state") is None   # only at main menu
         )
 
@@ -48,7 +48,7 @@ class HouseButtonHandler(BaseHandler):
 
         await send_message_with_keyboard(
             chat_id,
-            "🏠 Let's create a house ad. First, pick a city:",
+            "🏠 بیایید یک آگهی خانه ایجاد کنیم. ابتدا یک شهر انتخاب کنید:",
             keyboard,
         )
 
@@ -60,13 +60,13 @@ class WorkAndNeedsButtonHandler(BaseHandler):
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
             context.get("update_type") == "message"
-            and context.get("text") == "🔖 Work and Needs 💼"
+            and context.get("text") == "🔖 کار و نیازمندی‌ها 💼"
         )
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await send_message(
             context["chat_id"],
-            "The 'Work and Needs' section is under development."
+            "بخش «کار و نیازمندی‌ها» در حال توسعه است."
         )
 
 
@@ -77,13 +77,13 @@ class EuroButtonHandler(BaseHandler):
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
             context.get("update_type") == "message"
-            and context.get("text") == "💶 Euro Exchange 💶"
+            and context.get("text") == "💶 تبادل یورو 💶"
         )
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await send_message(
             context["chat_id"],
-            "The 'Euro' section is under development."
+            "بخش «تبادل یورو» در حال توسعه است."
         )
 
 
@@ -94,13 +94,13 @@ class MyProfileButtonHandler(BaseHandler):
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
             context.get("update_type") == "message"
-            and context.get("text") == "👤 My Profile 👤"
+            and context.get("text") == "👤 پروفایل من 👤"
         )
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await send_message(
             context["chat_id"],
-            "Your profile will be shown here soon."
+            "پروفایل شما به زودی اینجا نمایش داده می‌شود."
         )
 
 
@@ -111,13 +111,13 @@ class MyAdsButtonHandler(BaseHandler):
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
             context.get("update_type") == "message"
-            and context.get("text") == "📁 My Ads 📁"
+            and context.get("text") == "📁 آگهی‌های من 📁"
         )
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await send_message(
             context["chat_id"],
-            "Your ads will be listed here soon."
+            "آگهی‌های شما به زودی اینجا فهرست می‌شوند."
         )
 
 
@@ -128,11 +128,11 @@ class HelpButtonHandler(BaseHandler):
     async def match(self, context: dict, db: AsyncSession) -> bool:
         return (
             context.get("update_type") == "message"
-            and context.get("text") == "❔ Help and Support 📩"
+            and context.get("text") == "❔ راهنما و پشتیبانی 📩"
         )
 
     async def handle(self, context: dict, db: AsyncSession) -> None:
         await send_message(
             context["chat_id"],
-            "Help: You can use the menu below to navigate."
+            "راهنما: می‌توانید از منوی زیر برای پیمایش استفاده کنید."
         )

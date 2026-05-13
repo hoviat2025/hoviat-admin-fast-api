@@ -119,7 +119,7 @@ class AdminDeclineCallbackHandler(BaseHandler):
         await edit_message_text(
             chat_id,
             news.admin_handler_message_id,
-            "❌ This ad was declined.\nPlease reply to this message with the reason for the decline.",
+            "❌ این آگهی رد شد.\nلطفاً دلیل رد را در پاسخ به این پیام بنویسید.",
         )
         await edit_message_reply_markup(
             chat_id,
@@ -174,7 +174,7 @@ class AdminDeclineMessageHandler(BaseHandler):
         if news.user_id and news.preview_message_id:
             await send_message_with_reply(
                 news.user_id,
-                f"❌ Your house ad was declined.\nReason: {decline_text}",
+                f"❌ آگهی خانه شما رد شد.\nدلیل: {decline_text}",
                 news.preview_message_id,
             )
 
@@ -182,7 +182,7 @@ class AdminDeclineMessageHandler(BaseHandler):
             await edit_message_text(
                 check_admin_channel,
                 news.admin_handler_message_id,
-                f"❌ House ad declined.\nReason: {decline_text}",
+                f"❌ آگهی خانه رد شد.\nدلیل: {decline_text}",
             )
             await edit_message_reply_markup(
                 check_admin_channel,
@@ -249,7 +249,6 @@ class AdminConfirmCallbackHandler(BaseHandler):
                     news_id,
                 )
                 await news_repo.update_news(news_id=news_id, news_text=edited_text)
-                # Refresh the in‑memory object so the rest of the handler sees the new value
                 news = await news_repo.get_by_id(news_id)
                 if not news:
                     logger.error("News %s disappeared after update", news_id)
@@ -259,7 +258,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
         target_channel = get_house_channel(news.city)
         if not target_channel:
             logger.error(f"No target channel for city '{news.city}'")
-            await send_message(check_admin_channel, "⚠️ No channel configured for this city.")
+            await send_message(check_admin_channel, "⚠️ هیچ کانالی برای این شهر پیکربندی نشده است.")
             return
 
         logger.info("Target channel for city '%s': %s", news.city, target_channel)
@@ -269,8 +268,6 @@ class AdminConfirmCallbackHandler(BaseHandler):
         hilfen_reply_params = await reply_service.build_hilfen_channel_reply(news.user_id)
 
         # ---- 3) Send preview to target channel ----
-        # The stored news_text now contains the final (possibly edited) caption,
-        # so we use it directly – no city prepending.
         preview_text = news.news_text or ""
         media_objects = None
         if news.media:
@@ -311,7 +308,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
 
         if main_message_id is None:
             logger.error("Failed to send news to target channel")
-            await send_message(check_admin_channel, "⚠️ Failed to publish. Please try again.")
+            await send_message(check_admin_channel, "⚠️ انتشار ناموفق بود. لطفاً دوباره تلاش کنید.")
             return
 
         logger.info(
@@ -320,7 +317,6 @@ class AdminConfirmCallbackHandler(BaseHandler):
             main_message_id,
         )
 
-        # Save basic channel info
         await news_repo.update_news(
             news_id=news_id,
             main_channel_id=target_channel,
@@ -405,7 +401,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
             await edit_message_text(
                 check_admin_channel,
                 news.admin_handler_message_id,
-                "✅ News published successfully.",
+                "✅ آگهی با موفقیت منتشر شد.",
             )
             await edit_message_reply_markup(
                 check_admin_channel,
@@ -420,7 +416,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
             await edit_message_text(
                 news.user_id,
                 news.user_handle_message_id,
-                "✅ Your house ad has been published!",
+                "✅ آگهی خانه شما منتشر شد!",
             )
             await edit_message_reply_markup(
                 news.user_id,
