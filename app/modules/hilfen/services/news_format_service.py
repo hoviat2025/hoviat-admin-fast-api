@@ -23,9 +23,14 @@ def format_decline_comment(news: HilfenNews, decline_reason: str) -> str:
 
 
 def format_published_comment(news: HilfenNews) -> str:
-    """Build the comment text that is posted in the various groups when a house ad is published."""
-    preview = format_news_preview(news.city, news.news_text or "")
-    return f"🏠 **New house ad published**\n{preview}"
+    """
+    Build the comment text that is posted in the various groups when a house ad is published.
+
+    After admin confirmation, news.news_text holds the full (possibly edited)
+    caption as it should appear.  We therefore use it directly without
+    prepending the city again.
+    """
+    return f"🏠 **New house ad published**\n{news.news_text or ''}"
 
 
 def format_contact_message(user: User) -> str:

@@ -10,9 +10,10 @@ argument to sendMessage / sendPhoto / sendMediaGroup / etc.
 import logging
 from typing import Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.modules.hilfen.repositories.user_repository import HilfenUserRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,13 @@ class ReplyService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def build_admin_channel_reply(self, user_id: int) -> Optional[dict]:
-        """Quote the user's post in ADMIN_CHANNEL_ID."""
+    async def build_admin_channel_reply(
+        self, user_id: int, stars: int = 1
+    ) -> Optional[dict]:
+        """
+        Quote the user's post in ADMIN_CHANNEL_ID.
+        The `stars` parameter controls how many star emojis appear in the quote.
+        """
         user_repo = HilfenUserRepository(self.db)
         user = await user_repo.get_by_id(user_id)
         if not user or not user.admin_message_id:
@@ -55,10 +61,16 @@ class ReplyService:
         return {
             "message_id": target_message_id,
             "chat_id": target_chat_id,
+            "quote": "⭐" * stars,
         }
 
-    async def build_hilfen_channel_reply(self, user_id: int) -> Optional[dict]:
-        """Quote the user's post in HILFEN_CHANNEL_ID."""
+    async def build_hilfen_channel_reply(
+        self, user_id: int, stars: int = 1
+    ) -> Optional[dict]:
+        """
+        Quote the user's post in HILFEN_CHANNEL_ID.
+        The `stars` parameter controls how many star emojis appear in the quote.
+        """
         user_repo = HilfenUserRepository(self.db)
         user = await user_repo.get_by_id(user_id)
         if not user or not user.hilfen_message_id:
@@ -87,4 +99,6 @@ class ReplyService:
         return {
             "message_id": target_message_id,
             "chat_id": target_chat_id,
+            "quote": "⭐" * stars,
         }
+    

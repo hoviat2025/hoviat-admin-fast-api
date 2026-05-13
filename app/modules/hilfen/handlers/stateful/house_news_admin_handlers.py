@@ -30,7 +30,6 @@ from app.modules.hilfen.services.telegram_service import (
 )
 from app.modules.hilfen.services.news_format_service import (
     format_decline_comment,
-    format_news_preview,
     format_published_comment,
     format_contact_message,
 )
@@ -241,6 +240,21 @@ class AdminConfirmCallbackHandler(BaseHandler):
             logger.error(f"News {news_id} not found for confirm")
             return
 
+        # ---- 0) Capture admin-edited preview text ----
+        edited_text = context.get("callback_query_reply_text")
+        if edited_text and edited_text.strip():
+            if news.news_text != edited_text:
+                logger.info(
+                    "Updating news_text for news %s to admin-edited version",
+                    news_id,
+                )
+                await news_repo.update_news(news_id=news_id, news_text=edited_text)
+                # Refresh the in‑memory object so the rest of the handler sees the new value
+                news = await news_repo.get_by_id(news_id)
+                if not news:
+                    logger.error("News %s disappeared after update", news_id)
+                    return
+
         # ---- 1) Target channel ----
         target_channel = get_house_channel(news.city)
         if not target_channel:
@@ -255,7 +269,9 @@ class AdminConfirmCallbackHandler(BaseHandler):
         hilfen_reply_params = await reply_service.build_hilfen_channel_reply(news.user_id)
 
         # ---- 3) Send preview to target channel ----
-        preview_text = format_news_preview(news.city, news.news_text or "")
+        # The stored news_text now contains the final (possibly edited) caption,
+        # so we use it directly – no city prepending.
+        preview_text = news.news_text or ""
         media_objects = None
         if news.media:
             try:
@@ -331,7 +347,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
                 contact_msg_id = await send_message_return_id(
                     group_chat_id,
                     contact_text,
-                    reply_parameters={"message_id": group_msg_id},  
+                    reply_parameters={"message_id": group_msg_id},
                 )
                 if contact_msg_id:
                     await news_repo.update_news(

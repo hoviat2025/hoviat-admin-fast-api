@@ -26,12 +26,14 @@ def extract_context(update: dict) -> dict:
         "is_album_composite": False,
         "album_photos": None,
         "reply_to_message_id": None,
-        "message_id": None,                    # <-- new
+        "message_id": None,
         # Auto‑forwarded comment fields
         "is_automatic_forward": False,
         "sender_chat_id": None,
         "sender_chat_type": None,
         "forward_origin_message_id": None,
+        # Extra text from callback_query's replied message (admin preview edits)
+        "callback_query_reply_text": None,
     }
 
     # ---- message ----
@@ -116,5 +118,14 @@ def extract_context(update: dict) -> dict:
         context["username"] = cb.get("from", {}).get("username")
         context["first_name"] = cb.get("from", {}).get("first_name")
         context["last_name"] = cb.get("from", {}).get("last_name")
+
+        # Expose the text/caption of the message that the callback button was
+        # attached to (i.e. the admin handler message's reply‑to preview).
+        # This allows the confirm handler to pick up admin edits.
+        reply_msg = msg.get("reply_to_message")
+        if reply_msg:
+            reply_text = reply_msg.get("text") or reply_msg.get("caption")
+            if reply_text:
+                context["callback_query_reply_text"] = reply_text
 
     return context
