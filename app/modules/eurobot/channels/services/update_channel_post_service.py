@@ -2,7 +2,6 @@ import logging
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Tuple
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.encoders import jsonable_encoder
 
@@ -55,7 +54,6 @@ class UpdateChannelPostService:
                 # User data changed after the last channel update → edit caption
                 formatted_text = self._main_channel_formatter_local(user)
                 await self._edit_caption_in_main_channel(main_msg_id, formatted_text)
-                await asyncio.sleep(15)
 
                 main_changed = True
         else:

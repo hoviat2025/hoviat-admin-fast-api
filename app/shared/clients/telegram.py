@@ -45,7 +45,7 @@ async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> 
     # Configure transport with basic retry logic for network-level failures
     transport = httpx.AsyncHTTPTransport(retries=2)
 
-    async with httpx.AsyncClient(transport=transport, timeout=250.0, headers=HEADERS) as client:
+    async with httpx.AsyncClient(transport=transport, timeout=30.0, headers=HEADERS) as client:
         try:
             response = await client.post(url, json=payload)
 
@@ -105,7 +105,7 @@ async def _raw_http_get_bytes(url: str) -> Optional[bytes]:
     Internal helper for binary data retrieval (e.g., downloading media).
     """
     try:
-        async with httpx.AsyncClient(timeout=600.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=60.0, headers=HEADERS) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
                 return resp.content
