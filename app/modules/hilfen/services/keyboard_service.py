@@ -142,3 +142,11 @@ def build_user_published_keyboard(news_id: int, post_url: str) -> list[list[dict
             },
         ]
     ]
+
+
+def build_user_stopped_keyboard(post_url: str) -> list[list[dict]]:
+    """
+    Inline keyboard shown to the user after they stop the news.
+    Contains only the link to the post (no stop button).
+    """
+    return [[{"text": "🔗 View my ad", "url": post_url}]]

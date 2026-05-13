@@ -20,6 +20,7 @@ from app.modules.hilfen.constants import (
     ROLE_PUBLISH_TEXT,
     HOUSE_PREVIEW_CONFIRM_PREFIX,
     HOUSE_PREVIEW_DECLINE_PREFIX,
+    STOP_NEWS_PREFIX,    
 )
 from app.modules.hilfen.repositories.bot_state import BotStateRepository
 from app.modules.hilfen.repositories.news_repository import NewsRepository
@@ -43,11 +44,13 @@ from app.modules.hilfen.services.keyboard_service import (
     build_photos_keyboard,
     build_preview_confirm_keyboard,
     build_admin_review_keyboard,
-
+    build_user_stopped_keyboard,   
 )
 from app.modules.hilfen.services.city_service import get_all_cities, is_valid_city
-from app.modules.hilfen.services.news_format_service import format_news_preview
-
+from app.modules.hilfen.services.news_format_service import (
+    format_news_preview,
+    format_stopped_news,                   
+)
 from app.modules.hilfen.services.reply_service import ReplyService
 
 
@@ -912,4 +915,73 @@ class HouseNewsPreviewFallbackHandler(BaseHandler):
             await send_message(
                 chat_id,
                 "⚠️ Please use the buttons to confirm or decline your news preview.",
+            )
+
+
+# ===========================================================================
+# STOP THE NEWS (callback data = stop_news_<type>_<newsid>)
+# ===========================================================================
+class HouseNewsStopCallbackHandler(BaseHandler):
+    """User clicked the 'Stop the news' button on a published ad."""
+
+    async def match(self, context: dict, db: AsyncSession) -> bool:
+        if context.get("update_type") != "callback_query":
+            return False
+        # Only in private chat
+        if not is_user_message_in_private(context):
+            return False
+        data = context.get("text", "")
+        return data.startswith(STOP_NEWS_PREFIX)
+
+    async def handle(self, context: dict, db: AsyncSession) -> None:
+        data = context["text"]
+        chat_id = context["chat_id"]          # user's private chat
+        user_id = context["user_id"]
+
+        # Extract news id from callback data (format: stop_news_<type>_<id>)
+        try:
+            # Example: stop_news_house_18 → id = 18
+            news_id = int(data.rsplit("_", 1)[-1])
+        except (ValueError, IndexError):
+            logger.warning(f"Invalid stop callback data: {data}")
+            return
+
+        news_repo = NewsRepository(db)
+        news = await news_repo.get_by_id(news_id)
+        if not news or news.status != "published":
+            # Already stopped or never published – nothing to do
+            await send_message(chat_id, "⚠️ This ad is no longer active.")
+            return
+
+        # 1) Mark as stopped in the database
+        await news_repo.update_news(news_id=news_id, status="stopped")
+
+        # 2) Edit the published post in the target channel
+        if news.main_channel_id and news.main_channel_message_id:
+            stopped_text = format_stopped_news(news.news_text or "")
+            await edit_message_text(
+                news.main_channel_id,
+                news.main_channel_message_id,
+                stopped_text,
+            )
+
+        # 3) Edit the contact comment under the post (remove personal link)
+        if news.group_chat_id and news.contact_group_message_id:
+            await edit_message_text(
+                news.group_chat_id,
+                news.contact_group_message_id,
+                "⛔️ This ad has been stopped. Please refer to the main post above.",
+            )
+
+        # 4) Edit the user’s handler message (keep only the “View my ad” button)
+        if news.user_id and news.user_handle_message_id:
+            # Rebuild the post URL (same logic as in admin confirm)
+            channel_id_str = str(news.main_channel_id).removeprefix("-100")
+            post_url = f"https://t.me/c/{channel_id_str}/{news.main_channel_message_id}"
+
+            new_keyboard = build_user_stopped_keyboard(post_url)
+            await edit_message_reply_markup(
+                news.user_id,
+                news.user_handle_message_id,
+                reply_markup={"inline_keyboard": new_keyboard},
             )

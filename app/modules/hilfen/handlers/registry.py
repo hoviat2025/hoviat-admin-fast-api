@@ -45,6 +45,7 @@ from app.modules.hilfen.handlers.stateful.house_news_flow_handlers import (
     HouseNewsPreviewConfirmHandler,
     HouseNewsPreviewDeclineHandler,
     HouseNewsPreviewFallbackHandler,
+    HouseNewsStopCallbackHandler,
 )
 from app.modules.hilfen.handlers.stateful.main_menu_handlers import (
     HouseButtonHandler,
@@ -116,7 +117,7 @@ STATEFUL_HANDLERS = [
     HouseNewsPreviewConfirmHandler(),
     HouseNewsPreviewDeclineHandler(),
     HouseNewsPreviewFallbackHandler(),
-
+    HouseNewsStopCallbackHandler(),
     # Admin review handlers (check‑admin channel)
     AdminDeclineCallbackHandler(),
     AdminDeclineMessageHandler(),

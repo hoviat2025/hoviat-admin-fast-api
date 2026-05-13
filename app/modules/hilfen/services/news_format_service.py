@@ -36,3 +36,7 @@ def format_published_comment(news: HilfenNews) -> str:
 def format_contact_message(user: User) -> str:
     """Build the contact text that is posted as a comment under the news in the discussion group."""
     return f"📞 Contact: [Open chat](tg://user?id={user.user_id})"
+
+def format_stopped_news(news_text: str) -> str:
+    """Build the text that replaces the original ad when the user stops it."""
+    return f"⛔️ **This ad has been stopped**\n{news_text}"
