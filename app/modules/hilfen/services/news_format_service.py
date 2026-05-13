@@ -6,13 +6,37 @@ Formatting helpers for news previews, admin messages, and comments.
 from app.models.hilfen_news import HilfenNews
 from app.models.user import User
 
+# ---------------------------------------------------------------------------
+# Temporary mapping – move to city_service when the list grows
+# ---------------------------------------------------------------------------
+PERSIAN_CITY_TAGS = {
+    "Berlin": "#برلین",
+    "Hamburg": "#هامبورگ",
+    "Munich": "#مونیخ",
+    # add other cities as needed
+}
+
 
 def format_news_preview(city: str | None, news_text: str) -> str:
-    """Build the preview text shown to the user and later to the admin."""
-    parts = []
-    if city:
-        parts.append(f"📍 {city}")
+    """
+    Build the preview text shown to the user and later to the admin.
+
+    The format follows a fixed Persian template:
+        🔵
+        {description}
+        
+        🏙شهر:  #{city_in_persian}  آلمان
+
+        👤 ارتباط با شخص در کامنت 👇
+    """
+    parts = ["🔵"]
     parts.append(news_text)
+    if city:
+        persian_tag = PERSIAN_CITY_TAGS.get(city, f"#{city}")
+        parts.append("")  # blank line
+        parts.append(f"🏙شهر:  {persian_tag}  آلمان")
+    parts.append("")  # blank line
+    parts.append("👤 ارتباط با شخص در کامنت 👇")
     return "\n".join(parts)
 
 
@@ -36,6 +60,7 @@ def format_published_comment(news: HilfenNews) -> str:
 def format_contact_message(user: User) -> str:
     """Build the contact text that is posted as a comment under the news in the discussion group."""
     return f"📞 Contact: [Open chat](tg://user?id={user.user_id})"
+
 
 def format_stopped_news(news_text: str) -> str:
     """Build the text that replaces the original ad when the user stops it."""
