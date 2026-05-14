@@ -38,8 +38,6 @@ async def send_message(chat_id: int, text: str) -> bool:
     return True
 
 
-
-
 async def send_message_with_keyboard(
     chat_id: int,
     text: str,
@@ -140,10 +138,6 @@ async def remove_keyboard(chat_id: int, text: str) -> bool:
         return False
 
     return True
-
-
-
-
 
 
 async def send_message_with_inline_keyboard(
@@ -312,7 +306,7 @@ async def send_photo(
     chat_id: int,
     photo: str,          # file_id
     caption: str = "",
-    reply_parameters: dict | None = None,    # <-- NEW
+    reply_parameters: dict | None = None,
 ) -> Optional[dict]:
     """
     Send a single photo with an optional caption.
@@ -323,7 +317,7 @@ async def send_photo(
         "photo": photo,
         "caption": caption,
     }
-    if reply_parameters is not None:          # <-- NEW
+    if reply_parameters is not None:
         payload["reply_parameters"] = reply_parameters
 
     response = await telegram_bot.send_request("sendPhoto", payload)
@@ -345,7 +339,7 @@ async def send_media_group(
     chat_id: int,
     media: list[dict],
     caption: str = "",
-    reply_parameters: dict | None = None,    # <-- NEW
+    reply_parameters: dict | None = None,
 ) -> Optional[list[dict]]:
     """
     Send a media group (album).
@@ -370,7 +364,7 @@ async def send_media_group(
         "chat_id": chat_id,
         "media": media_payload,
     }
-    if reply_parameters is not None:          # <-- NEW
+    if reply_parameters is not None:
         payload["reply_parameters"] = reply_parameters
 
     response = await telegram_bot.send_request("sendMediaGroup", payload)
@@ -386,3 +380,70 @@ async def send_media_group(
         return None
 
     return response.data.get("result")
+
+
+async def send_contact_mention(
+    chat_id: int,
+    user_id: int,
+    reply_parameters: dict | None = None,
+) -> Optional[int]:
+    """
+    Send a message that contains a clickable text mention linking to the user.
+
+    Fetches the user's Telegram first name via getChat, builds a Persian
+    contact line (👤 ارتباط با آگهی‌دهنده: {name}), and attaches a text_mention
+    entity so the name becomes a link to the user's chat.
+
+    Returns the message_id on success, None on failure.
+    """
+    # Fetch the user's current Telegram display name
+    user_info = await telegram_bot.send_request("getChat", {"chat_id": user_id})
+    first_name = "کاربر"
+    if user_info.success:
+        result = user_info.data.get("result", {})
+        first_name = result.get("first_name", "کاربر")
+    else:
+        logger.error(
+            "Failed to fetch Telegram user info for mention (user_id=%s): %s",
+            user_id,
+            user_info.error_message,
+        )
+
+    text = f"👤 ارتباط با آگهی‌دهنده: {first_name}"
+    prefix = "👤 ارتباط با آگهی‌دهنده: "
+    offset = len(prefix)
+    length = len(first_name)
+
+    entity = {
+        "type": "text_mention",
+        "offset": offset,
+        "length": length,
+        "user": {
+            "id": user_id,
+            "is_bot": False,
+            "first_name": first_name,
+        },
+    }
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "entities": [entity],
+    }
+    if reply_parameters is not None:
+        payload["reply_parameters"] = reply_parameters
+
+    response = await telegram_bot.send_request("sendMessage", payload)
+    if not response.success:
+        logger.error(
+            "Telegram sendMessage with text_mention failed",
+            extra={
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "error": response.error_message,
+                "status_code": response.status_code,
+            },
+        )
+        return None
+
+    return response.data.get("result", {}).get("message_id")
