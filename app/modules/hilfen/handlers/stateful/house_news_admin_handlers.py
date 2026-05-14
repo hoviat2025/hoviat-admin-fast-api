@@ -27,11 +27,11 @@ from app.modules.hilfen.services.telegram_service import (
     send_photo,
     send_media_group,
     send_message_return_id,
-    send_contact_mention,
 )
 from app.modules.hilfen.services.news_format_service import (
     format_decline_comment,
     format_published_comment,
+    format_contact_message,
 )
 from app.modules.hilfen.services.reply_service import ReplyService
 from app.modules.hilfen.services.channel_mapping_service import get_house_channel
@@ -56,29 +56,26 @@ async def _wait_for_comment_mapping(
     Poll the comment cache every 2 seconds for up to ```timeout``` seconds.
     Returns (group_chat_id, group_message_id) or None on timeout.
     """
-    await asyncio.sleep(10)
-
     logger.info(
         "Waiting for comment mapping: channel=%s, original_msg=%s (timeout=%ss)",
         channel_id,
         original_msg_id,
         timeout,
     )
-    # deadline = asyncio.get_event_loop().time() + timeout
-    # while True:
-    for i in range(4):
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
         mapping = comment_mapping_cache.get_mapping(channel_id, original_msg_id)
         if mapping is not None:
             logger.info("Comment mapping found: %s", mapping)
             return mapping
-        # if asyncio.get_event_loop().time() >= deadline:
+        if asyncio.get_event_loop().time() >= deadline:
             logger.warning(
                 "Timeout waiting for comment mapping (channel %s, msg %s)",
                 channel_id,
                 original_msg_id,
             )
             return None
-        await asyncio.sleep(10)
+        await asyncio.sleep(2)
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +317,13 @@ class AdminConfirmCallbackHandler(BaseHandler):
             main_message_id,
         )
 
+        await news_repo.update_news(
+            news_id=news_id,
+            main_channel_id=target_channel,
+            main_channel_message_id=main_message_id,
+            status="publishing",
+        )
+
         # ---- 4) Wait for auto‑forwarded comment ----
         mapping = await _wait_for_comment_mapping(target_channel, main_message_id)
         group_chat_id = None
@@ -329,13 +333,16 @@ class AdminConfirmCallbackHandler(BaseHandler):
         else:
             logger.warning("No comment mapping appeared; continuing without contact comment")
 
-        # ---- 5) Send contact comment with text mention ----
+        # ---- 5) Send contact comment ----
         contact_msg_id = None
         if group_chat_id and group_msg_id:
-            if news.user_id:
-                contact_msg_id = await send_contact_mention(
+            user_repo = HilfenUserRepository(db)
+            user = await user_repo.get_by_id(news.user_id)
+            if user:
+                contact_text = format_contact_message(user)
+                contact_msg_id = await send_message_return_id(
                     group_chat_id,
-                    news.user_id,
+                    contact_text,
                     reply_parameters={"message_id": group_msg_id},
                 )
                 if contact_msg_id:
@@ -345,13 +352,6 @@ class AdminConfirmCallbackHandler(BaseHandler):
                         group_chat_id=group_chat_id,
                         group_message_id=group_msg_id,
                     )
-
-        await news_repo.update_news(
-            news_id=news_id,
-            main_channel_id=target_channel,
-            main_channel_message_id=main_message_id,
-            status="publishing",
-        )
 
         # ---- 6) Post published comments in admin / hilfen / main groups ----
         comment_text = format_published_comment(news)

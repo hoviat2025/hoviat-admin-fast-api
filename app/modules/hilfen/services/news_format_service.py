@@ -66,7 +66,7 @@ def format_contact_message(user: User) -> str:
     """
     return (
         "👤 ارتباط با آگهی‌دهنده: "
-        f'<a href="tg://user?id={user.user_id}">ارسال پیام</a>'
+        f'tg://openmessage?user_id={user.user_id}'
     )
 
 
