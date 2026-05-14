@@ -7,12 +7,12 @@ from app.models.hilfen_news import HilfenNews
 from app.models.user import User
 
 # ---------------------------------------------------------------------------
-# Temporary mapping – move to city_service when the list grows
+# Persian city hashtags – keyed by the Persian city names stored in DB
 # ---------------------------------------------------------------------------
 PERSIAN_CITY_TAGS = {
-    "Berlin": "#برلین",
-    "Hamburg": "#هامبورگ",
-    "Munich": "#مونیخ",
+    "برلین": "#برلین",
+    "هامبورگ": "#هامبورگ",
+    "نورنبرگ": "#نورنبرگ",
     # add other cities as needed
 }
 
@@ -43,7 +43,7 @@ def format_news_preview(city: str | None, news_text: str) -> str:
 def format_decline_comment(news: HilfenNews, decline_reason: str) -> str:
     """Build the comment that will be posted in the admin group when a house ad is declined."""
     preview = format_news_preview(news.city, news.news_text or "")
-    return f"⚠️ **House ad declined**\n{preview}\n\n**Reason:** {decline_reason}"
+    return f"⚠️ **آگهی خانه رد شد**\n{preview}\n\n**دلیل:** {decline_reason}"
 
 
 def format_published_comment(news: HilfenNews) -> str:
@@ -54,14 +54,22 @@ def format_published_comment(news: HilfenNews) -> str:
     caption as it should appear.  We therefore use it directly without
     prepending the city again.
     """
-    return f"🏠 **New house ad published**\n{news.news_text or ''}"
+    return f"🏠 **آگهی خانه جدید منتشر شد**\n{news.news_text or ''}"
 
 
 def format_contact_message(user: User) -> str:
-    """Build the contact text that is posted as a comment under the news in the discussion group."""
-    return f"📞 Contact: [Open chat](tg://user?id={user.user_id})"
+    """
+    Build the contact text that is posted as a comment under the news in the discussion group.
+
+    Uses a simple HTML <a> tag, which Telegram's parse_mode='HTML' will render
+    as a clickable link.
+    """
+    return (
+        "👤 ارتباط با آگهی‌دهنده: "
+        f'<a href="tg://user?id={user.user_id}">ارسال پیام</a>'
+    )
 
 
 def format_stopped_news(news_text: str) -> str:
     """Build the text that replaces the original ad when the user stops it."""
-    return f"⛔️ **This ad has been stopped**\n{news_text}"
+    return f"⛔️ **این آگهی متوقف شده است**\n{news_text}"

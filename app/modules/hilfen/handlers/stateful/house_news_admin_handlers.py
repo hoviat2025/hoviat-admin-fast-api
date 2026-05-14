@@ -75,7 +75,7 @@ async def _wait_for_comment_mapping(
                 original_msg_id,
             )
             return None
-        await asyncio.sleep(2)
+        await asyncio.sleep(10)
 
 
 # ---------------------------------------------------------------------------
