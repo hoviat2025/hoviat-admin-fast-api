@@ -275,7 +275,8 @@ async def send_message_with_reply(
 async def send_message_return_id(
     chat_id: int,
     text: str,
-    reply_parameters: dict | None = None,   # <-- NEW
+    reply_parameters: dict | None = None,  
+    parse_mode: str | None = None, 
 ) -> Optional[int]:
     """
     Send a plain text message and return the message_id.
@@ -285,8 +286,11 @@ async def send_message_return_id(
         "chat_id": chat_id,
         "text": text,
     }
-    if reply_parameters is not None:          # <-- NEW
+    if reply_parameters is not None:         
         payload["reply_parameters"] = reply_parameters
+
+    if parse_mode is not None:              
+        payload["parse_mode"] = parse_mode
 
     response = await telegram_bot.send_request("sendMessage", payload)
     if not response.success:
