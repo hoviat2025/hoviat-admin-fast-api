@@ -17,9 +17,8 @@ Resolves the Telegram channel ID where a particular news should be published.
 
 
 _HOUSE_CHANNELS: dict[str, int] = {
-    "berlin": -1003960248207,
-    "dortmund": -1001234567891,
-    "another_city": -1001234567892,
+    "برلین": -1003960248207,
+    "another_city": -1003801235222,
 }
 
 
