@@ -56,26 +56,29 @@ async def _wait_for_comment_mapping(
     Poll the comment cache every 2 seconds for up to ```timeout``` seconds.
     Returns (group_chat_id, group_message_id) or None on timeout.
     """
+    await asyncio.sleep(10)
+
     logger.info(
         "Waiting for comment mapping: channel=%s, original_msg=%s (timeout=%ss)",
         channel_id,
         original_msg_id,
         timeout,
     )
-    deadline = asyncio.get_event_loop().time() + timeout
-    while True:
+    # deadline = asyncio.get_event_loop().time() + timeout
+    # while True:
+    for i in range(4):
         mapping = comment_mapping_cache.get_mapping(channel_id, original_msg_id)
         if mapping is not None:
             logger.info("Comment mapping found: %s", mapping)
             return mapping
-        if asyncio.get_event_loop().time() >= deadline:
+        # if asyncio.get_event_loop().time() >= deadline:
             logger.warning(
                 "Timeout waiting for comment mapping (channel %s, msg %s)",
                 channel_id,
                 original_msg_id,
             )
             return None
-        await asyncio.sleep(2)
+        await asyncio.sleep(10)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +357,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
             main_channel_message_id=main_message_id,
             status="publishing",
         )
-        
+
         # ---- 6) Post published comments in admin / hilfen / main groups ----
         comment_text = format_published_comment(news)
         user_repo = HilfenUserRepository(db)
