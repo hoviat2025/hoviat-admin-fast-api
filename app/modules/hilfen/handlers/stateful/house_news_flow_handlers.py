@@ -465,8 +465,8 @@ class HouseNewsDescriptionInputHandler(BaseHandler):
         keyboard = build_photos_keyboard()
         await send_message_with_keyboard(
             chat_id,
-            "🖼️ حالا می‌توانید یک یا چند عکس از خانه خود بفرستید "
-            "(به صورت آلبوم یا تک‌عکس)، یا این مرحله را رد کنید:",
+            "🖼️ اگر تمایل دارید می توانید برای آگهی یک یا چند عکس بفرستید"
+            "یا این مرحله را رد کنید:",
             keyboard,
         )
 

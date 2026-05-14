@@ -344,6 +344,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
                     group_chat_id,
                     contact_text,
                     reply_parameters={"message_id": group_msg_id},
+                    parse_mode="Markdown"
                 )
                 if contact_msg_id:
                     await news_repo.update_news(

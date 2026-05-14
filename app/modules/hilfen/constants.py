@@ -28,8 +28,8 @@ HOUSE_PREVIEW_CONFIRM_PREFIX = "confirm_news_house_"
 HOUSE_PREVIEW_DECLINE_PREFIX = "decline_news_house_"
 
 # House role selection step (rent vs. publish)
-ROLE_RENT_TEXT = "🏠 می‌خواهم اجاره کنم"
-ROLE_PUBLISH_TEXT = "🏠 می‌خواهم برای اجاره آگهی کنم"
+ROLE_RENT_TEXT = "🏠 دنبال خانه هستم"
+ROLE_PUBLISH_TEXT = "🏠 می‌خواهم خانه اجاره دهم"
 
 # Admin review inline callbacks (used in check_admin_channel)
 ADMIN_CONFIRM_PREFIX = "admin_confirm_house_"
