@@ -132,7 +132,7 @@ class AdminDeclineMessageHandler(BaseHandler):
     """Catches the admin's reply with the decline reason in the check‑admin channel."""
 
     async def match(self, context: dict, db: AsyncSession) -> bool:
-        if context.get("update_type") != "message":
+        if context.get("update_type") != "channel_post":
             return False
         if str(context.get("chat_id")) != settings.CHECK_ADMIN_CHANNEL_ID:
             return False

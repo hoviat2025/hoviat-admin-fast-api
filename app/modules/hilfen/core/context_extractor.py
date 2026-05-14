@@ -6,6 +6,7 @@ def extract_context(update: dict) -> dict:
     Extracts fields common to all handlers: user info, chat info, text,
     contact, photo array, media_group_id (for albums), external reply info,
     and a flag indicating whether this update is an assembled album composite.
+    Handles message, edited_message, channel_post, and callback_query updates.
     """
 
     context = {
@@ -36,6 +37,8 @@ def extract_context(update: dict) -> dict:
         "callback_query_reply_text": None,
         # ID of an externally replied message (e.g. channel comment reply)
         "external_reply_message_id": None,
+        # Signature of the admin who posted on behalf of the channel
+        "author_signature": None,
     }
 
     # ---- message ----
@@ -77,6 +80,10 @@ def extract_context(update: dict) -> dict:
         if forward_origin and isinstance(forward_origin, dict):
             context["forward_origin_message_id"] = forward_origin.get("message_id")
 
+        author_sig = msg.get("author_signature")
+        if author_sig:
+            context["author_signature"] = author_sig
+
     # ---- edited_message ----
     elif "edited_message" in update:
         msg = update["edited_message"]
@@ -114,6 +121,48 @@ def extract_context(update: dict) -> dict:
         if forward_origin and isinstance(forward_origin, dict):
             context["forward_origin_message_id"] = forward_origin.get("message_id")
 
+        author_sig = msg.get("author_signature")
+        if author_sig:
+            context["author_signature"] = author_sig
+
+    # ---- channel_post ----
+    elif "channel_post" in update:
+        msg = update["channel_post"]
+        chat_obj = msg.get("chat", {})
+
+        context["update_type"] = "channel_post"
+        context["user_id"] = msg.get("from", {}).get("id")
+        context["is_bot"] = msg.get("from", {}).get("is_bot", False)
+        context["chat_id"] = chat_obj.get("id")
+        context["chat_type"] = chat_obj.get("type")
+        context["text"] = msg.get("text")
+        context["username"] = msg.get("from", {}).get("username")
+        context["first_name"] = msg.get("from", {}).get("first_name")
+        context["last_name"] = msg.get("from", {}).get("last_name")
+        context["message_id"] = msg.get("message_id")
+
+        reply_msg = msg.get("reply_to_message")
+        if reply_msg:
+            context["reply_to_message_id"] = reply_msg.get("message_id")
+
+        external_reply = msg.get("external_reply")
+        if external_reply and isinstance(external_reply, dict):
+            context["external_reply_message_id"] = external_reply.get("message_id")
+
+        # channel_post may have is_automatic_forward? Usually not, but handle.
+        context["is_automatic_forward"] = msg.get("is_automatic_forward", False)
+        sender_chat = msg.get("sender_chat")
+        if sender_chat:
+            context["sender_chat_id"] = sender_chat.get("id")
+            context["sender_chat_type"] = sender_chat.get("type")
+        forward_origin = msg.get("forward_origin")
+        if forward_origin and isinstance(forward_origin, dict):
+            context["forward_origin_message_id"] = forward_origin.get("message_id")
+
+        author_sig = msg.get("author_signature")
+        if author_sig:
+            context["author_signature"] = author_sig
+
     # ---- callback_query ----
     elif "callback_query" in update:
         cb = update["callback_query"]
@@ -143,5 +192,9 @@ def extract_context(update: dict) -> dict:
         external_reply = msg.get("external_reply")
         if external_reply and isinstance(external_reply, dict):
             context["external_reply_message_id"] = external_reply.get("message_id")
+
+        author_sig = msg.get("author_signature")
+        if author_sig:
+            context["author_signature"] = author_sig
 
     return context
