@@ -317,12 +317,7 @@ class AdminConfirmCallbackHandler(BaseHandler):
             main_message_id,
         )
 
-        await news_repo.update_news(
-            news_id=news_id,
-            main_channel_id=target_channel,
-            main_channel_message_id=main_message_id,
-            status="publishing",
-        )
+
 
         # ---- 4) Wait for auto‑forwarded comment ----
         mapping = await _wait_for_comment_mapping(target_channel, main_message_id)
@@ -353,6 +348,13 @@ class AdminConfirmCallbackHandler(BaseHandler):
                         group_message_id=group_msg_id,
                     )
 
+        await news_repo.update_news(
+            news_id=news_id,
+            main_channel_id=target_channel,
+            main_channel_message_id=main_message_id,
+            status="publishing",
+        )
+        
         # ---- 6) Post published comments in admin / hilfen / main groups ----
         comment_text = format_published_comment(news)
         user_repo = HilfenUserRepository(db)
