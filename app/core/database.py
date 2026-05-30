@@ -12,7 +12,12 @@ engine = create_async_engine(
     # Number of permanent connections to keep in the pool
     pool_size=20,
     # Maximum number of temporary connections allowed during high-traffic spikes
-    max_overflow=10
+    max_overflow=10,
+    
+    # 🔴 ADD THIS LINE RIGHT HERE:
+    # This completely turns off asyncpg's prepared statement cache, which prevents 
+    # InvalidCachedStatementError when traffic is high or PgBouncer is routing connections.
+    connect_args={"prepared_statement_cache_size": 0}
 )
 
 # Database session factory for generating new session instances
