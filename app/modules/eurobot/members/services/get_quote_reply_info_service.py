@@ -28,9 +28,12 @@ class GetQuoteReplyInfoService:
         2. Generates 'components' using local formatter service.
         3. Returns a flattened dictionary containing components + ID fields.
         """
+        logger.info(f"Executing GetQuoteReplyInfoService for user_id: {user_id}")
+        
         # 1. Get User
         user = await self.repo.get_by_id(user_id)
         if not user:
+            logger.warning(f"User {user_id} not found in database.")
             raise ServiceError(
                 code="USER_NOT_FOUND",
                 message=f"User {user_id} not found",
@@ -47,13 +50,17 @@ class GetQuoteReplyInfoService:
         elif user.updated_at and user.updated_at >= user.channel_updated_at:
             should_update = True
 
+        logger.info(f"User {user_id} should_update evaluated to: {should_update}")
+
         # 3. Call Update Service if needed
         if should_update:
             try:
+                logger.info(f"Triggering UpdateChannelPostService for user {user_id}")
                 update_service = UpdateChannelPostService(self.db)
                 payload = UpdateChannelPostRequest(user_id=user_id)
                 updated_user = await update_service.execute(payload)
                 user = updated_user  # Refresh user object
+                logger.info(f"UpdateChannelPostService completed successfully for user {user_id}")
             except Exception as e:
                 logger.error(f"Failed to update channel post for user {user_id}: {e}")
                 raise ServiceError(
@@ -63,6 +70,7 @@ class GetQuoteReplyInfoService:
                 )
 
         # 4. Generate Formatter Components (Local Call)
+        logger.debug(f"Generating formatter components locally for user {user_id}")
         components = self._generate_formatter_components(user)
         if not isinstance(components, dict):
             components = {}
@@ -85,6 +93,7 @@ class GetQuoteReplyInfoService:
             "public_channel_id": getattr(settings, "PUBLIC_CHANNEL_ID", None)
         })
 
+        logger.info(f"GetQuoteReplyInfoService completed successfully for user_id: {user_id}")
         return response_data
 
     def _generate_formatter_components(self, user) -> Dict[str, Any]:

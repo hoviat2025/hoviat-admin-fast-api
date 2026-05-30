@@ -5,7 +5,7 @@ from app.core.config import settings
 engine = create_async_engine(
     settings.DATABASE_URL,
     # Set to True to log all SQL queries (useful for debugging in development)
-    echo=True, 
+    echo=False, 
     # Validates connection health by 'pinging' the database before checking out 
     # a connection from the pool. This prevents 'Server has gone away' errors.
     pool_pre_ping=True, 

@@ -1,13 +1,17 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import register_middleware
 
+# 🔴 NEW LOGGING SETUP: This forces logs to print beautifully in FastAPI
 logging.basicConfig(
+    stream=sys.stdout,
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    force=True # Forces Uvicorn to use our format
 )
 logger = logging.getLogger(__name__)
 
