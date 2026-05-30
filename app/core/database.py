@@ -13,11 +13,13 @@ engine = create_async_engine(
     pool_size=20,
     # Maximum number of temporary connections allowed during high-traffic spikes
     max_overflow=10,
+
     
-    # 🔴 ADD THIS LINE RIGHT HERE:
-    # This completely turns off asyncpg's prepared statement cache, which prevents 
-    # InvalidCachedStatementError when traffic is high or PgBouncer is routing connections.
-    connect_args={"prepared_statement_cache_size": 0}
+   # 🔴 1. Tells the SQLAlchemy dialect to stop preparing statements
+    prepared_statement_cache_size=0,
+    
+    # 🔴 2. Tells the asyncpg driver itself to stop caching statements
+    connect_args={"statement_cache_size": 0} 
 )
 
 # Database session factory for generating new session instances
