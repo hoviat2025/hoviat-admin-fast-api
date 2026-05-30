@@ -50,14 +50,15 @@ class UpsertMemberService:
 
             # --- 4. Call Update Channel Service ---
             try:
-                update_service = UpdateChannelPostService(self.db)
+                pass
+                # update_service = UpdateChannelPostService(self.db)
                 
-                # Prepare the request using the user_id
-                update_payload = UpdateChannelPostRequest(user_id=user.user_id)
+                # # Prepare the request using the user_id
+                # update_payload = UpdateChannelPostRequest(user_id=user.user_id)
                 
-                # Execute the update. 
-                # This syncs the user with the Telegram channel.
-                user = await update_service.execute(update_payload)
+                # # Execute the update. 
+                # # This syncs the user with the Telegram channel.
+                # user = await update_service.execute(update_payload)
 
             except Exception as e:
                 # Log the error but do NOT rollback the Upsert.

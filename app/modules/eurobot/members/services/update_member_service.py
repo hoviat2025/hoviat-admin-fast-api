@@ -43,16 +43,17 @@ class UpdateMemberService:
         
         # 5. Call Update Channel Service
         try:
-            # We initialize the service
-            update_service = UpdateChannelPostService(self.db)
+            pass
+            # # We initialize the service
+            # update_service = UpdateChannelPostService(self.db)
             
-            # We prepare the request using the user_id from the payload (or the object)
-            update_payload = UpdateChannelPostRequest(user_id=updated_user.user_id)
+            # # We prepare the request using the user_id from the payload (or the object)
+            # update_payload = UpdateChannelPostRequest(user_id=updated_user.user_id)
             
-            # Execute the update. 
-            # We assign the result back to `updated_user` because the service 
-            # might have updated the `channel_updated_at` or message ID fields.
-            updated_user = await update_service.execute(update_payload)
+            # # Execute the update. 
+            # # We assign the result back to `updated_user` because the service 
+            # # might have updated the `channel_updated_at` or message ID fields.
+            # updated_user = await update_service.execute(update_payload)
             
         except Exception as e:
             # If the channel sync fails, we log it but do NOT crash the request.

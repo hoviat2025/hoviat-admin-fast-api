@@ -1,8 +1,15 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import register_middleware
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # --- IMPORTS ---
 from app.modules.admin.router import router as admin_router
@@ -14,13 +21,13 @@ from app.shared.clients.storage import storage_client
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Startup
-    print("🚀 Starting up...")
+    logger.info("🚀 Starting up...")
     storage_client.start() 
 
     yield # Application runs here
     
     # 2. Shutdown
-    print("🛑 Shutting down...")
+    logger.info("🛑 Shutting down...")
     storage_client.stop()
 
 # --- APP SETUP ---
@@ -33,7 +40,7 @@ register_middleware(app)
 register_exception_handlers(app)
 
 mode = settings.APP_MODE
-print(f"🚀 Starting App in Mode: {mode}")
+logger.info(f"🚀 Starting App in Mode: {mode}")
 
 if mode == "admin" or mode == "all":
     app.include_router(admin_router, prefix="/api/admin")

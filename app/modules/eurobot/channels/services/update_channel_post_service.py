@@ -86,24 +86,24 @@ class UpdateChannelPostService:
                 picture_file=picture_file,
                 user_id=user_id
             )
-            print(f"Main channel photo sent for {user_id}. API returned ID: {main_msg_id}")
+            logger.info(f"Main channel photo sent for {user_id}. API returned ID: {main_msg_id}")
             await asyncio.sleep(3)
             # --- STEP B: Send Public Channel Message (Using ID from Step A) ---
             # We do NOT wait for DB confirmation here. We assume the ID is valid.
             await self._send_user_post_in_public_channel(main_msg_id)
-            print(f"Public channel post sent for {user_id} referencing ID {main_msg_id}")
+            logger.info(f"Public channel post sent for {user_id} referencing ID {main_msg_id}")
             
              
             await asyncio.sleep(3)
             # --- STEP C: Confirm Main Channel Webhook ---
             # Now we wait for the webhook to update the DB for the first message
             user = await self._confirm_group_message(user_id)
-            print(f"DB Confirmed Main Message. TG_MSG_ID: {user.telegram_message_id}, GRP_MSG_ID: {user.group_message_id}")
+            logger.info(f"DB Confirmed Main Message. TG_MSG_ID: {user.telegram_message_id}, GRP_MSG_ID: {user.group_message_id}")
 
             # --- STEP D: Confirm Public Channel Webhook ---
             # Now we wait for the webhook to update the DB for the second message
             await self._confirm_public_group_post(user_id)
-            print(f"DB Confirmed Public Message.")
+            logger.info(f"DB Confirmed Public Message.")
 
         except Exception as e:
             # Strategic Error Logging & Rollback
