@@ -56,6 +56,7 @@ class InsertMemberService:
 
             # --- 4. Call Update Channel Service ---
             try:
+                pass
                 # update_service = UpdateChannelPostService(self.db)
                 
                 # # We use new_user.user_id (which you confirmed is the field name)
