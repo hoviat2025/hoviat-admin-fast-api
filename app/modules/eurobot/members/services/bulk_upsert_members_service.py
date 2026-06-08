@@ -21,11 +21,22 @@ class BulkUpsertMembersService:
         failed = []
 
         for index, user_data in enumerate(payload):
+            # 1. If index is 5 or greater, mock a standard "CONFLICT_OCCURRED" error response
+            # This avoids hitting the database entirely for these items.
+            if index >= 5:
+                failed.append(BulkUpsertFailedItem(
+                    index=index,
+                    status="error",
+                    code="CONFLICT_OCCURRED",
+                    message="Too many requests in a single batch. Only the first 5 are processed. Please retry."
+                ))
+                continue
+
             try:
-                # 1. Execute Upsert
+                # 2. Execute Upsert
                 user = await self.single_upsert_service.execute(user_data)
 
-                # 2. Add to Success
+                # 3. Add to Success
                 successful.append(BulkUpsertSuccessItem(
                     index=index,
                     user_id=user.user_id,
@@ -33,18 +44,20 @@ class BulkUpsertMembersService:
                 ))
 
             except ServiceError as e:
-                # 3. Handle Logic Errors (e.g. Counter conflict)
+                # 4. Handle Logic Errors (e.g. Counter conflict)
                 failed.append(BulkUpsertFailedItem(
                     index=index,
+                    status="error",
                     code=e.code,
                     message=e.message
                 ))
 
             except Exception as e:
-                # 4. Handle Unexpected Errors
+                # 5. Handle Unexpected Errors
                 await self.db.rollback()
                 failed.append(BulkUpsertFailedItem(
                     index=index,
+                    status="error",
                     code="INTERNAL_ERROR",
                     message=str(e)
                 ))
