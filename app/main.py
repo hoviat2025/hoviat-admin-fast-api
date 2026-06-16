@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # --- IMPORTS ---
 from app.modules.admin.router import router as admin_router
 from app.modules.eurobot.router import router as eurobot_router
+from app.modules.hilfen.router import router as hilfen_router
 
 from app.shared.clients.storage import storage_client
 
@@ -50,10 +51,17 @@ if mode == "admin" or mode == "all":
     app.include_router(admin_router, prefix="/api/admin")
 
 if mode == "eurobot" or mode == "all":
+    # Mount Eurobot
     app.include_router(
         eurobot_router, 
         prefix="/webhook/hoviat/v1/eurobot", 
         tags=["Eurobot Module"]
+    )
+    # Mount Hilfen (unprotected endpoints for initial verification)
+    app.include_router(
+        hilfen_router,
+        prefix="/webhook/hoviat/v1/hilfen",
+        tags=["Hilfen Module"]
     )
 
 @app.get("/health")

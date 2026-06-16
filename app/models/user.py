@@ -23,7 +23,7 @@ class User(Base):
     whatsapp_number = Column(String, nullable=True)
     country = Column(String, nullable=True)
     
-    # Auth & Status
+    # Auth & Status (Eurobot)
     password = Column(String, nullable=True)
     mode = Column(String, nullable=True)
     
@@ -32,17 +32,34 @@ class User(Base):
     is_registered = Column(Boolean, default=False)
     chat_not_found = Column(Boolean, default=False)
 
-    # Numbers / Timestamps
+    # Numbers / Timestamps (Eurobot)
     score = Column(Integer, default=0)
     ban_time = Column(BigInteger, default=0)
     join_date = Column(BigInteger, nullable=True)
 
-    # Media / External Refs
+    # Media / External Refs (Eurobot)
     profile_path = Column(String, nullable=True)
     telegram_message_id = Column(String, nullable=True)
     group_message_id = Column(String, nullable=True)
     public_message_id = Column(String, nullable=True)
     public_group_message_id = Column(String, nullable=True)
+
+    # ==========================================
+    # Hilfen Bot Specific Fields
+    # ==========================================
+    hilfen_id = Column(BigInteger, nullable=True)
+    hilfen_status = Column(String, nullable=True)
+    hilfen_date_join = Column(BigInteger, nullable=True)
+    hilfen_command = Column(String, nullable=True)
+    hilfen_data = Column(String, nullable=True)
+    hilfen_id_card_photo = Column(String, nullable=True)
+    hilfen_all_projects = Column(Integer, default=0)
+    hilfen_all_projects_done = Column(Integer, default=0)
+    hilfen_limits_time = Column(BigInteger, default=0)
+    
+    # Internal messaging anchors (not exposed via Pydantic API layer)
+    hilfen_message_id = Column(BigInteger, nullable=True)
+    hilfen_group_message_id = Column(BigInteger, nullable=True)
 
     # Timestamps
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
