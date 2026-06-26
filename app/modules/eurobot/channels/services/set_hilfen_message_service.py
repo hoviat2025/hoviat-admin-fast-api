@@ -2,44 +2,44 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.core.exceptions import ServiceError
-from app.modules.eurobot.channels.schemas.set_public_message_request import SetPublicMessageRequest
+from app.modules.eurobot.channels.schemas.set_hilfen_message_request import SetHilfenMessageRequest
 
 from app.modules.eurobot.channels.repositories.stage_message_ids import TelegramMessageRepository
-from app.modules.eurobot.channels.repositories.users import UserMessageUpdateRepository
+from app.modules.hilfen.repositories.user_repository import HilfenUserRepository
 
 logger = logging.getLogger(__name__)
 
-class SetPublicMessageService:
+class SetHilfenMessageService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.stage_repo = TelegramMessageRepository(db)
-        self.user_repo = UserMessageUpdateRepository(db)
+        self.user_repo = HilfenUserRepository(db)
 
-    async def execute(self, payload: SetPublicMessageRequest) -> User:
+    async def execute(self, payload: SetHilfenMessageRequest) -> User:
         """
-        Updates the staging table with public message mapping.
-        If the staging row is complete, it updates the main User table.
+        Updates the staging table with hilfen message mapping. 
+        If the staging table becomes complete, it updates the main User table.
         """
         # 1. Extract IDs and Prepare for Staging (Integers)
         lookup_msg_id_int = int(payload.original_update.message.external_reply.message_id)
-        public_msg_id_int = int(payload.original_update.message.forward_origin.message_id)
-        public_group_msg_id_int = int(payload.original_update.message.message_id)
+        hilfen_msg_id_int = int(payload.original_update.message.forward_origin.message_id)
+        hilfen_group_msg_id_int = int(payload.original_update.message.message_id)
 
-        logger.info(f"Executing SetPublicMessageService for lookup_msg_id_int: {lookup_msg_id_int}")
+        logger.info(f"Executing SetHilfenMessageService for lookup_msg_id_int: {lookup_msg_id_int}")
 
         # 2. Upsert into Staging Table
-        staging_row = await self.stage_repo.upsert_public_mapping(
+        staging_row = await self.stage_repo.upsert_hilfen_mapping(
             telegram_message_id=lookup_msg_id_int,
-            public_message_id=public_msg_id_int,
-            public_group_message_id=public_group_msg_id_int
+            hilfen_message_id=hilfen_msg_id_int,
+            hilfen_group_message_id=hilfen_group_msg_id_int
         )
 
         # 3. Check for Completeness (All required columns must be populated)
         is_staging_complete = (
             staging_row.user_id is not None and
             staging_row.group_message_id is not None and
-            staging_row.public_message_id is not None and
-            staging_row.public_group_message_id is not None 
+            staging_row.hilfen_message_id is not None and
+            staging_row.hilfen_group_message_id is not None
         )
 
         if not is_staging_complete:
@@ -51,13 +51,13 @@ class SetPublicMessageService:
             )
 
         # 4. Attempt Update on Main Table (One Motion)
-        # Writes only to NULL columns, ensuring previously set values cannot be overwritten
-        updated_user = await self.user_repo.set_message_ids_if_empty(
+        # We pass the Hilfen fields as native int() to align with the SQL BIGINT column types
+        updated_user = await self.user_repo.set_hilfen_message_ids_if_empty(
             user_id=staging_row.user_id,
             telegram_message_id=str(lookup_msg_id_int),
             group_message_id=str(staging_row.group_message_id),
-            public_message_id=str(public_msg_id_int),
-            public_group_message_id=str(public_group_msg_id_int)
+            hilfen_message_id=int(staging_row.hilfen_message_id),          # Changed from str() to int()
+            hilfen_group_message_id=int(staging_row.hilfen_group_message_id) # Changed from str() to int()
         )
 
         # 5. Commit Transaction

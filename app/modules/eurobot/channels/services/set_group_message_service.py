@@ -1,86 +1,98 @@
-import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.core.exceptions import ServiceError
 from app.modules.eurobot.channels.schemas.set_group_message_request import SetGroupMessageRequest
 
-# Import the specific repositories
 from app.modules.eurobot.channels.repositories.stage_message_ids import TelegramMessageRepository
 from app.modules.eurobot.channels.repositories.users import UserMessageUpdateRepository
-
-logger = logging.getLogger(__name__)
+from app.modules.hilfen.repositories.user_repository import HilfenUserRepository
 
 class SetGroupMessageService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.stage_repo = TelegramMessageRepository(db)
-        self.user_repo = UserMessageUpdateRepository(db)
+        self.public_repo = UserMessageUpdateRepository(db)       # handles public IDs
+        self.hilfen_repo = HilfenUserRepository(db)             # handles hilfen IDs
 
     async def execute(self, payload: SetGroupMessageRequest) -> User:
         """
-        Updates the staging table with user mapping. 
-        If the staging table becomes complete (has public IDs), it updates the main User table.
+        Stages the main message mapping (user_id + group_message_id) and then
+        independently attempts to write each complete sub-message group
+        (public, hilfen) into the main User table – all in one transaction.
+
+        Each repository update uses the strict "if empty" pattern. Whichever
+        webhook arrives first sets the shared main IDs, and late-arriving webhooks
+        safely update only their respective sub-columns.
         """
         user_id = payload.extracted_user_id
-        
-        # 1. Prepare IDs
-        # Note: Staging table was defined with Integer columns, User table usually has String columns.
+
+        # 1. Convert Telegram IDs to integers for the staging table.
         telegram_msg_id_int = int(payload.original_update.message.forward_origin.message_id)
         group_msg_id_int = int(payload.original_update.message.message_id)
 
-        logger.info(f"Executing SetGroupMessageService for user_id: {user_id}, telegram_msg_id_int: {telegram_msg_id_int}")
-
-        # 2. Upsert into Staging Table
-        # This acts as the "handshake" spot. We populate the User side of the equation.
+        # 2. Upsert the main (user + group) part of the staging row.
         staging_row = await self.stage_repo.upsert_user_mapping(
             telegram_message_id=telegram_msg_id_int,
             user_id=user_id,
-            group_message_id=group_msg_id_int
+            group_message_id=group_msg_id_int,
         )
-        logger.debug(f"Staging row upserted for user_id: {user_id}")
-
-        # 3. Check for Completeness
-        # We check if the 'Public' side of the data has already arrived via a parallel process.
-        is_staging_complete = (
-            staging_row.public_message_id is not None and 
-            staging_row.public_group_message_id is not None
-        )
-        logger.info(f"Staging complete status for user_id: {user_id} is {is_staging_complete}")
 
         updated_user = None
 
-        if is_staging_complete:
-            # 4. Attempt Update on Main Table (One Motion)
-            # We only update if the main table columns are currently NULL.
-            # We convert everything to str() because the main User table columns are typically VARCHAR.
-            logger.info(f"Attempting main table update for user_id: {user_id} with all IDs.")
-            updated_user = await self.user_repo.set_message_ids_if_empty(
+        # ------------------------------------------------------------
+        # 3. Public sub‑messages
+        # ------------------------------------------------------------
+        if (
+            staging_row.public_message_id is not None
+            and staging_row.public_group_message_id is not None
+        ):
+            # All public staging IDs are present → try to write them into
+            # the User table (only if the corresponding User columns are empty).
+            updated_user = await self.public_repo.set_message_ids_if_empty(
                 user_id=user_id,
                 telegram_message_id=str(telegram_msg_id_int),
-                group_message_id=str(group_msg_id_int),
+                group_message_id=str(staging_row.group_message_id),
                 public_message_id=str(staging_row.public_message_id),
-                public_group_message_id=str(staging_row.public_group_message_id)
+                public_group_message_id=str(staging_row.public_group_message_id),
             )
 
-        # 5. Commit everything (Staging upsert + potential User update)
-        await self.db.commit()
-        logger.debug("Database transaction committed.")
+        # ------------------------------------------------------------
+        # 4. Hilfen sub‑messages
+        # ------------------------------------------------------------
+        if (
+            staging_row.hilfen_message_id is not None
+            and staging_row.hilfen_group_message_id is not None
+        ):
+            # All hilfen staging IDs are present → try to write them into
+            # the User table. We pass Hilfen IDs as native int() to align with the SQL BIGINT column types.
+            hilfen_result = await self.hilfen_repo.set_hilfen_message_ids_if_empty(
+                user_id=staging_row.user_id,
+                telegram_message_id=str(telegram_msg_id_int),
+                group_message_id=str(staging_row.group_message_id),
+                hilfen_message_id=int(staging_row.hilfen_message_id),          # Changed from str() to int()
+                hilfen_group_message_id=int(staging_row.hilfen_group_message_id), # Changed from str() to int()
+            )
+            if hilfen_result is not None:
+                updated_user = hilfen_result
 
-        # 6. Return Logic
+        # ------------------------------------------------------------
+        # 5. Commit the whole transaction
+        # ------------------------------------------------------------
+        await self.db.commit()
+
+        # ------------------------------------------------------------
+        # 6. Return the most recently updated User, or the current state.
+        # ------------------------------------------------------------
         if updated_user:
-            logger.info(f"Main table updated successfully for user_id: {user_id}")
             return updated_user
-        
-        # If we didn't update the user (either staging incomplete or User table already filled),
-        # we return the current state of the user.
-        logger.info(f"No update performed on main table. Returning existing state for user_id: {user_id}")
-        existing_user = await self.user_repo.get_by_id(user_id)
+
+        # No update happened (either staging incomplete or all User columns
+        # were already set by a parallel process).
+        existing_user = await self.hilfen_repo.get_by_id(user_id)
         if not existing_user:
-             logger.warning(f"User {user_id} not found during existing state retrieval.")
-             raise ServiceError(
+            raise ServiceError(
                 code="USER_NOT_FOUND",
                 message=f"User {user_id} not found",
-                status_code=404
+                status_code=404,
             )
-            
         return existing_user

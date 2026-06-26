@@ -13,15 +13,14 @@ from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
 from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
 
-# Bot Imports
-from app.shared.bot_instances import sender_bot, euro_bot
+# Bot Instances
+from app.shared.bot_instances import sender_bot, euro_bot, hilfen_bot
 
 # Service Imports
 from app.modules.eurobot.members.services.profile_service import save_user_profile_to_cloud
 # Formatter Import
 from app.modules.eurobot.channels.services.format_messages import create_telegram_message
 
-# Correct Logger Initialization
 logger = logging.getLogger(__name__)
 
 class UpdateChannelPostService:
@@ -29,128 +28,160 @@ class UpdateChannelPostService:
         self.db = db
         self.repo = UserBaseRepository(db)
 
-    async def execute(self, payload: UpdateChannelPostRequest) -> User:
+    async def execute(self, payload: UpdateChannelPostRequest | int, update_source: str = "eurobot") -> User:
         """
-        Orchestrator function.
-        Decides between UPDATE or INSERT flow based on telegram_message_id.
+        Synchronises the user's channel posts with the database state.
+        Accepts either an UpdateChannelPostRequest object or a raw integer user_id.
+
+        Orchestration Flow:
+        1. Stage 1 (Main Channel): Checks if main post exists. Edits caption if user 
+           data changed since last update, or inserts a new main post if empty.
+        2. Stage 2 (Sub-Channels): If a sub-channel (public or hilfen) is empty and
+           the update_source matches, sends the corresponding message.
+        3. Stage 3 (Confirmations): Polls database to verify webhook handshakes, 
+           only waiting for the specific messages we actually dispatched.
         """
-        user_id = payload.user_id
-        
-        # 1. Get User Info
+        if isinstance(payload, int):
+            user_id = payload
+        else:
+            user_id = payload.user_id
+
+        # 1. Fetch fresh, non-cached user record
         user = await self._get_user_or_404(user_id)
 
-        # 2. Decision Tree
+        # Execution flags to target confirmations on-demand
+        sent_main = False
+        sent_public = False
+        sent_hilfen = False
+        main_changed = False
+
+        # ==========================================
+        #   STAGE 1: Main Channel Message
+        # ==========================================
         if user.telegram_message_id:
-            logger.info(f"User {user_id} exists in channel. Starting UPDATE flow.")
-            return await self._handle_update_flow(user)
+            main_msg_id = int(user.telegram_message_id)
+            
+            # Edit caption only if the user profile was modified after the last channel update
+            if (
+                user.updated_at is not None
+                and user.channel_updated_at is not None
+                and user.updated_at > user.channel_updated_at
+            ):
+                logger.info(f"User {user_id} main post exists but data is out of sync. Editing caption.")
+                formatted_text = self._main_channel_formatter_local(user)
+                await self._edit_caption_in_main_channel(main_msg_id, formatted_text)
+                main_changed = True
         else:
-            logger.info(f"User {user_id} not in channel. Starting INSERT flow.")
-            return await self._handle_insert_flow(user)
+            logger.info(f"User {user_id} main post is missing. Executing complete insert flow.")
+            # Clear any stale sub-channel columns to ensure a fresh, consistent state
+            await self._clear_sub_message_ids(user_id)
 
-    # ==========================================
-    #   FLOW HANDLERS
-    # ==========================================
+            # Retrieve profile photo using the correct bot instance matching the source
+            picture_file, image_path, chat_not_found = await self._process_profile_image(user_id, update_source)
+            formatted_text = self._main_channel_formatter_local(user)
 
-    async def _handle_update_flow(self, user: User) -> User:
-        logger.info(f"Starting Update Flow for {user.user_id}")
-        
-        # Generate formatted text locally
-        formatted_text = self._main_channel_formatter_local(user)
-
-        await self._edit_caption_in_main_channel(
-            message_id=user.telegram_message_id, 
-            formatted_text=formatted_text
-        )
-
-        updated_user = await self._update_channel_updated_at(user.user_id)
-        await self.db.commit()
-        logger.info(f"Update Flow Successful for {user.user_id}")
-        return updated_user
-
-    async def _handle_insert_flow(self, user: User) -> User:
-        user_id = user.user_id
-        logger.info(f"Starting Insert Flow for {user_id}")
-
-        # 1. Process Profile Image
-        picture_file, image_path, chat_not_found = await self._process_profile_image(user_id)
-        logger.info(f"Profile processed: ImagePath={image_path}, ChatNotFound={chat_not_found}")
-
-        # 2. Formatter (Local)
-        formatted_text = self._main_channel_formatter_local(user)
-
-        try:
-            # --- STEP A: Send Main Channel Message ---
-            # We get the ID immediately to use in the next step
+            # Post the main channel message
             main_msg_id = await self._send_photo_to_main_channel(
                 formatted_text=formatted_text,
                 picture_file=picture_file,
                 user_id=user_id
             )
-            logger.info(f"Main channel photo sent for {user_id}. API returned ID: {main_msg_id}")
-            await asyncio.sleep(3)
-            # --- STEP B: Send Public Channel Message (Using ID from Step A) ---
-            # We do NOT wait for DB confirmation here. We assume the ID is valid.
+            sent_main = True
+            main_changed = True
+            
+            # Save profile properties before sending sub-channel replies
+            await self._update_profile_fields(user_id, image_path, chat_not_found)
+            await self.db.commit()
+
+        # ==========================================
+        #   STAGE 2: Sub-Channel Messages (Independent Checks)
+        # ==========================================
+        # These are evaluated regardless of whether we ran an insert or update on the main channel.
+        # This handles the crossover scenario smoothly.
+        if update_source == "eurobot" and user.public_message_id is None:
             await self._send_user_post_in_public_channel(main_msg_id)
-            logger.info(f"Public channel post sent for {user_id} referencing ID {main_msg_id}")
+            sent_public = True
+            logger.info(f"Public channel post sent for user {user_id}")
             
-             
+        elif update_source == "hilfenbot" and user.hilfen_message_id is None:
+            await self._send_user_post_in_hilfen_channel(main_msg_id)
+            sent_hilfen = True
+            logger.info(f"Hilfen channel post sent for user {user_id}")
+
+        # Sleep briefly to allow Telegram to process forwarding delays before polling begins
+        if sent_main or sent_public or sent_hilfen:
             await asyncio.sleep(3)
-            # --- STEP C: Confirm Main Channel Webhook ---
-            # Now we wait for the webhook to update the DB for the first message
+
+        # ==========================================
+        #   STAGE 3: Targeted Confirmations (Polling)
+        # ==========================================
+        if sent_main:
             user = await self._confirm_group_message(user_id)
-            logger.info(f"DB Confirmed Main Message. TG_MSG_ID: {user.telegram_message_id}, GRP_MSG_ID: {user.group_message_id}")
-
-            # --- STEP D: Confirm Public Channel Webhook ---
-            # Now we wait for the webhook to update the DB for the second message
+            logger.info(f"DB Confirmed Main Message for {user_id}.")
+            
+        if sent_public:
             await self._confirm_public_group_post(user_id)
-            logger.info(f"DB Confirmed Public Message.")
-
-        except Exception as e:
-            # Strategic Error Logging & Rollback
-            logger.error(f"CRITICAL: Insert Flow Failed for {user_id}. Error: {str(e)}")
-            logger.info(f"Initiating Rollback (NULL updates) for {user_id}")
+            logger.info(f"DB Confirmed Public Message for {user_id}.")
             
-            try:
-                await self._update_channel_posts_to_null(user_id, chat_not_found)
-                await self.db.commit()
-                logger.info(f"Rollback committed successfully for {user_id}")
-            except Exception as rollback_error:
-                logger.critical(f"FATAL: Rollback failed for {user_id}: {rollback_error}")
-            
-            # Re-raise to 500
-            raise ServiceError(code="INSERT_FLOW_FAILED", message="Failed to set posts", status_code=500)
+        if sent_hilfen:
+            await self._confirm_hilfen_group_post(user_id)
+            logger.info(f"DB Confirmed Hilfen Message for {user_id}.")
 
-        # 3. Final DB Update (Success)
-        final_user = await self._update_profile_and_success_fields(
-            user_id=user_id,
-            image_path=image_path,
-            chat_not_found=chat_not_found
-        )
+        # ==========================================
+        #   STAGE 4: Finalize Timestamps
+        # ==========================================
+        if main_changed:
+            current_time = datetime.now(timezone.utc)
+            await self.repo.update(
+                user_id=user_id,
+                update_data={"channel_updated_at": current_time}
+            )
 
         await self.db.commit()
-        logger.info(f"Insert Flow Complete & Committed for {user_id}")
-        return final_user
+        logger.info(f"Channel update completed successfully for {user_id}")
+        
+        # Return a completely fresh snapshot of the user record
+        return await self.repo.get_fresh_by_id(user_id)
 
     # ==========================================
     #   HELPER FUNCTIONS
     # ==========================================
 
     async def _get_user_or_404(self, user_id: int) -> User:
-        user = await self.repo.get_by_id(user_id)
+        user = await self.repo.get_fresh_by_id(user_id)
         if not user:
             raise ServiceError(code="USER_NOT_FOUND", message=f"User {user_id} not found", status_code=404)
         return user
 
-    async def _process_profile_image(self, user_id: int) -> Tuple[str, Optional[str], bool]:
+    async def _clear_sub_message_ids(self, user_id: int) -> None:
+        """Wipes sub-channel IDs to ensure starting clean on a new main post."""
+        await self.repo.update(
+            user_id=user_id,
+            update_data={
+                "public_message_id": None,
+                "public_group_message_id": None,
+                "hilfen_message_id": None,
+                "hilfen_group_message_id": None
+            }
+        )
+        await self.db.flush()
+
+    async def _process_profile_image(self, user_id: int, update_source: str) -> Tuple[str, Optional[str], bool]:
         chat_not_found = False
         picture_file = settings.DEFAULT_PROFILE_PICTURE
         image_path = None
 
-        chat_resp = await euro_bot.send_request("getChat", {"chat_id": str(user_id)})
+        # Call getChat using the bot instance matching the update source
+        if update_source == "hilfenbot":
+            bot = hilfen_bot
+        else:
+            bot = euro_bot
+
+        chat_resp = await bot.send_request("getChat", {"chat_id": str(user_id)})
 
         if not chat_resp.success:
             chat_not_found = True
-            logger.warning(f"getChat failed for {user_id}: {chat_resp.error_message}")
+            logger.warning(f"getChat failed for {user_id} via {update_source}: {chat_resp.error_message}")
             return picture_file, image_path, chat_not_found
 
         photo_obj = chat_resp.data.get("result", {}).get("photo")
@@ -166,20 +197,20 @@ class UpdateChannelPostService:
 
         return picture_file, image_path, chat_not_found
 
+    async def _update_profile_fields(self, user_id: int, image_path: Optional[str], chat_not_found: bool) -> None:
+        await self.repo.update(
+            user_id=user_id,
+            update_data={
+                "profile_path": image_path,
+                "chat_not_found": chat_not_found
+            }
+        )
+
     def _main_channel_formatter_local(self, user: User) -> str:
-        """
-        Replaces external API call with local function execution.
-        """
         try:
-            # Prepare data
             user_data = jsonable_encoder(user, exclude={"password", "token"})
-            
-            # Execute logic
             result = create_telegram_message(user_data)
-            
-            # Extract text
             return result.get("text")
-        
         except Exception as e:
             logger.error(f"Local formatter failed for user {user.user_id}: {e}")
             raise ServiceError(
@@ -202,9 +233,6 @@ class UpdateChannelPostService:
         return True
 
     async def _send_photo_to_main_channel(self, formatted_text: str, picture_file: str, user_id: int) -> int:
-        """
-        Sends the photo and returns the Message ID immediately.
-        """
         payload = {
             "chat_id": settings.MAIN_CHANNEL_ID,
             "photo": picture_file,
@@ -217,7 +245,6 @@ class UpdateChannelPostService:
              logger.error(f"Send Photo Failed: {result.error_message}")
              raise ServiceError(code="TELEGRAM_SEND_FAILED", message="Send photo failed", status_code=502)
         
-        # Extract Message ID directly from the API response
         try:
             message_id = result.data["result"]["message_id"]
             return message_id
@@ -225,86 +252,79 @@ class UpdateChannelPostService:
             logger.error(f"Failed to extract message_id from API response for user {user_id}: {e}")
             raise ServiceError(code="TELEGRAM_API_ERROR", message="Failed to parse message ID", status_code=502)
 
+    async def _send_user_post_in_public_channel(self, telegram_message_id: int) -> bool:
+        payload = {
+            "chat_id": settings.PUBLIC_CHANNEL_ID,
+            "text": "❗️مشتری جدید\nستاره ها : « ⭐️⭐️⭐️⭐️⭐️ »\nتعداد کنسلی ❌❌❌❌❌",
+            "reply_parameters": {
+                "message_id": telegram_message_id,
+                "chat_id": settings.MAIN_CHANNEL_ID
+            }
+        }
+        result = await sender_bot.send_request("sendMessage", payload)
+        if not result.success:
+            logger.error(f"Telegram Public Send Failed: {result.error_message}")
+            raise Exception(f"Failed to send public post: {result.error_message}")
+        return True
+
+    async def _send_user_post_in_hilfen_channel(self, telegram_message_id: int) -> bool:
+        payload = {
+            "chat_id": settings.HILFEN_CHANNEL_ID,
+            "text": "❗️مشتری جدید\nستاره ها : « ⭐️⭐️⭐️⭐️⭐️ »\nتعداد کنسلی ❌❌❌❌❌",
+            "reply_parameters": {
+                "message_id": telegram_message_id,
+                "chat_id": settings.MAIN_CHANNEL_ID
+            }
+        }
+        result = await sender_bot.send_request("sendMessage", payload)
+        if not result.success:
+            logger.error(f"Telegram Hilfen Send Failed: {result.error_message}")
+            raise Exception(f"Failed to send Hilfen post: {result.error_message}")
+        return True
+
+    # ==========================================
+    #   CONFIRMATION POLLING HELPERS
+    # ==========================================
+
     async def _confirm_group_message(self, user_id: int) -> User:
+        return await self._confirm_field(user_id, "group_message_id", "Main")
+
+    async def _confirm_public_group_post(self, user_id: int) -> User:
+        return await self._confirm_field(user_id, "public_group_message_id", "Public")
+
+    async def _confirm_hilfen_group_post(self, user_id: int) -> User:
+        return await self._confirm_field(user_id, "hilfen_group_message_id", "Hilfen")
+
+    async def _confirm_field(self, user_id: int, field_name: str, label: str) -> User:
         """
-        Polls DB until group_message_id appears.
-        Uses get_fresh_by_id to bypass SQLAlchemy cache.
+        Polling harness. Commits inside the loop to refresh the transaction read-snapshot, 
+        and uses get_fresh_by_id to avoid SQLAlchemy identity map cache.
         """
         start_time = datetime.now()
         timeout_seconds = 45
         
         while (datetime.now() - start_time).total_seconds() < timeout_seconds:
-            # We still commit to refresh the transaction snapshot
             await self.db.commit()
             
-            # USE NEW REPO METHOD: get_fresh_by_id
             user = await self.repo.get_fresh_by_id(user_id)
-            
             if user:
-                # We need both IDs to be present to consider it fully 'confirmed'
-                if user.group_message_id is not None and user.telegram_message_id is not None:
+                val = getattr(user, field_name, None)
+                if val is not None:
+                    logger.info(f"{label} group message confirmed for {user_id}: {val}")
                     return user
             
             await asyncio.sleep(5)
             
-        logger.error(f"Timeout waiting for group_message_id for user {user_id}")
+        logger.error(f"Timeout waiting for {label} {field_name} for user {user_id}")
         raise ServiceError(
             code="CONFIRM_TIMEOUT", 
-            message="Timed out waiting for Group Message ID confirmation", 
+            message=f"Timed out waiting for {label} Group Message ID confirmation", 
             status_code=500
         )
 
-    async def _send_user_post_in_public_channel(self, telegram_message_id: int) -> bool:
-        """
-        Sends the public post referencing the main channel ID immediately.
-        """
-        payload = {
-           "chat_id": settings.PUBLIC_CHANNEL_ID,
-           "text": "❗️مشتری جدید\nستاره ها : « ⭐️⭐️⭐️⭐️⭐️ »\nتعداد کنسلی ❌❌❌❌❌",
-           "reply_parameters": {
-               "message_id": telegram_message_id,
-               "chat_id": settings.MAIN_CHANNEL_ID
-           }
-        }
-        logger.info(f"Sending public msg payload: {payload}")
-        
-        result = await sender_bot.send_request("sendMessage", payload)
-        if not result.success:
-            logger.error(f"Telegram Public Send Failed: {result.error_message}")
-            raise Exception(f"Failed to send public post: {result.error_message}")
-        
-        return True
-
-    async def _confirm_public_group_post(self, user_id: int) -> User:
-        start_time = datetime.now()
-        timeout = 45
-        while (datetime.now() - start_time).total_seconds() < timeout:
-            # Commit to see parallel updates.
-            await self.db.commit()
-            
-            # USE NEW REPO METHOD: get_fresh_by_id
-            user = await self.repo.get_fresh_by_id(user_id)
-            
-            if user:
-                if user.public_group_message_id is not None:
-                    logger.info(f"Public Group Message Confirmed: {user.public_group_message_id}")
-                    return user
-            await asyncio.sleep(5)
-            
-        logger.error(f"Timeout waiting for PUBLIC group_message_id for user {user_id}")
-        raise Exception("Timed out waiting for Public Group Message ID")
-
-    async def _update_channel_posts_to_null(self, user_id: int, chat_not_found: bool) -> bool:
-        logger.warning(f"Executing NULL Rollback for User {user_id}")
-        update_data = {
-            "telegram_message_id": None,
-            "group_message_id": None,
-            "public_message_id": None,
-            "public_group_message_id": None,
-            "chat_not_found": chat_not_found
-        }
-        await self.repo.update(user_id=user_id, update_data=update_data)
-        return True
+    # ==========================================
+    #   DATABASE UPDATE HELPERS
+    # ==========================================
 
     async def _update_profile_and_success_fields(self, user_id: int, image_path: Optional[str], chat_not_found: bool) -> User:
         current_time = datetime.now(timezone.utc)

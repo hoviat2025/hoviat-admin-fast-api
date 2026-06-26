@@ -36,12 +36,15 @@ class TelegramResponse:
 
 async def _raw_http_post(url: str, payload: Dict, retry_on_429: bool = True) -> TelegramResponse:
     """
-    Executes an atomic HTTP POST request. 
-    
-    This helper uses a short-lived client instance for each call. While less 
-    performant than connection pooling, it ensures maximum isolation and 
-    prevents stale connection issues in long-running tasks.
+    Executes an atomic HTTP POST request.
     """
+    # 🔴 ADD THIS DEBUG BLOCK:
+    import os
+    print("\n" + "="*50, flush=True)
+    print(f"[DEBUG] Target API URL: {url}", flush=True)
+    print(f"[DEBUG] Active Environment Proxies: {os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY') or 'None detected'}", flush=True)
+    print("="*50 + "\n", flush=True)
+
     # Configure transport with basic retry logic for network-level failures
     transport = httpx.AsyncHTTPTransport(retries=2)
 
