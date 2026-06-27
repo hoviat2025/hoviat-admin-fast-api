@@ -1,5 +1,6 @@
 import logging
 import sys
+import asyncio  # <-- Added to manage background tasks
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import settings
@@ -21,6 +22,7 @@ from app.modules.eurobot.router import router as eurobot_router
 from app.modules.hilfen.router import router as hilfen_router
 
 from app.shared.clients.storage import storage_client
+from app.shared.queue_worker import run_queue_worker  # <-- Imported queue worker loop
 
 # --- LIFESPAN MANAGER ---
 @asynccontextmanager
@@ -29,10 +31,25 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting up...")
     storage_client.start() 
 
+    # Launch the queue worker task in the background (Non-blocking)
+    logger.info("⚙️ Initializing background queue worker...")
+    worker_task = asyncio.create_task(run_queue_worker())
+
     yield # Application runs here
     
     # 2. Shutdown
     logger.info("🛑 Shutting down...")
+    
+    # Cancel the background worker loop and wait for it to cleanly stop
+    logger.info("🛑 Cancelling queue worker loop...")
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        logger.info("✅ Queue worker loop stopped successfully.")
+    except Exception as e:
+        logger.error(f"❌ Error while shutting down queue worker: {e}")
+
     storage_client.stop()
 
 # --- APP SETUP ---
