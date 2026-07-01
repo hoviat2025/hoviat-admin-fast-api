@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update, func
+from sqlalchemy.orm import aliased  # <-- Added to handle self-join exists check
 
 # Database and Models
 from app.core.database import AsyncSessionLocal
@@ -86,10 +87,32 @@ async def reset_orphaned_jobs():
 
 
 async def fetch_next_pending_job(session) -> JobQueue | None:
-    """Finds and locks the next candidate pending job sorted by priority and age."""
+    """
+    Finds and locks the next candidate pending job sorted by priority and age.
+    
+    Guarantees that we never pick up a pending job for a user if they currently
+    have another job in 'processing' status. This enforces strict sequential, 
+    non-concurrent execution for any single user.
+    """
+    jq_alias = aliased(JobQueue)
+    
+    # Subquery checking if a 'processing' job already exists for the same user
+    processing_exists = (
+        select(1)
+        .where(
+            jq_alias.user_id == JobQueue.user_id,
+            jq_alias.status == JobStatus.PROCESSING
+        )
+        .exists()
+    )
+    
+    # Fetch the next pending job ONLY if no other job for the same user is currently processing
     stmt = (
         select(JobQueue)
-        .where(JobQueue.status == JobStatus.PENDING)
+        .where(
+            JobQueue.status == JobStatus.PENDING,
+            ~processing_exists  # NOT EXISTS processing job for the same user
+        )
         .order_by(JobQueue.priority.desc(), JobQueue.created_at.asc())
         .limit(1)
         .with_for_update(skip_locked=True)

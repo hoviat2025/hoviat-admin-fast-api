@@ -67,12 +67,12 @@ class GetQuoteReplyInfoService:
                     .values(
                         user_id=user_id,
                         priority=JobPriority.HIGH.value,
-                        status=JobStatus.PENDING.value,
+                        status=JobStatus.PENDING,
                         source="eurobot"
                     )
                     .on_conflict_do_update(
                         index_elements=[JobQueue.user_id],
-                        index_where=(JobQueue.status.in_([JobStatus.PENDING, JobStatus.PROCESSING])),
+                        index_where=(JobQueue.status == JobStatus.PENDING),  # Aligned with database
                         set_={
                             "priority": func.greatest(JobQueue.priority, JobPriority.HIGH.value),
                             "updated_at": func.now()

@@ -1,15 +1,16 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.models.user import User
 from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
 
-# --- ADDED IMPORTS ---
-from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
+# Queue Models
+from app.models.job_queue import JobQueue, JobStatus, JobPriority
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +49,35 @@ class UpsertMemberService:
             # before passing it to the next service.
             await self.db.refresh(user)
 
-            # --- 4. Call Update Channel Service ---
+            # 4. Queue Background Channel Sync (Medium Priority)
             try:
-                pass
-                # update_service = UpdateChannelPostService(self.db)
-                
-                # # Prepare the request using the user_id
-                # update_payload = UpdateChannelPostRequest(user_id=user.user_id)
-                
-                # # Execute the update. 
-                # # This syncs the user with the Telegram channel.
-                # user = await update_service.execute(update_payload)
+                # Insert a MEDIUM priority pending job. If an active job for this user 
+                # already exists, we update the priority using GREATEST
+                stmt = (
+                    pg_insert(JobQueue)
+                    .values(
+                        user_id=user.user_id,
+                        priority=JobPriority.MEDIUM.value,
+                        status=JobStatus.PENDING,
+                        source="eurobot"
+                    )
+                    .on_conflict_do_update(
+                        index_elements=[JobQueue.user_id],
+                        index_where=(JobQueue.status == JobStatus.PENDING),  # Aligned with database
+                        set_={
+                            "priority": func.greatest(JobQueue.priority, JobPriority.MEDIUM.value),
+                            "updated_at": func.now()
+                        }
+                    )
+                )
+                await self.db.execute(stmt)
+                await self.db.commit()
+                logger.info(f"Enqueued background sync task (Medium) for user {user.user_id}")
 
             except Exception as e:
-                # Log the error but do NOT rollback the Upsert.
-                # The user data is safe in the DB.
-                logger.error(f"User {user.user_id} upserted, but failed to update channel post: {e}")
+                # Log the error but do NOT rollback or crash the Upsert.
+                # The user data is already committed and safe in the DB.
+                logger.error(f"User {user.user_id} upserted, but failed to queue background sync: {e}")
 
             return user
 

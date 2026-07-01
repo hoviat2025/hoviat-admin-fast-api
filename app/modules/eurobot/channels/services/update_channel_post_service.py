@@ -97,13 +97,14 @@ class UpdateChannelPostService:
         #   STAGE 2: Sub-Channel Messages (Independent Checks)
         # ==========================================
         # These are evaluated regardless of whether we ran an insert or update on the main channel.
-        # This handles the crossover scenario smoothly.
-        if update_source == "eurobot" and user.public_message_id is None:
+        # Changed from if-elif to independent ifs to support updating both sub-channels
+        # in a single pass when using 'both' update_source.
+        if update_source in ["eurobot", "both"] and user.public_message_id is None:
             await self._send_user_post_in_public_channel(main_msg_id)
             sent_public = True
             logger.info(f"Public channel post sent for user {user_id}")
             
-        elif update_source == "hilfenbot" and user.hilfen_message_id is None:
+        if update_source in ["hilfenbot", "both"] and user.hilfen_message_id is None:
             await self._send_user_post_in_hilfen_channel(main_msg_id)
             sent_hilfen = True
             logger.info(f"Hilfen channel post sent for user {user_id}")
@@ -167,21 +168,31 @@ class UpdateChannelPostService:
         await self.db.flush()
 
     async def _process_profile_image(self, user_id: int, update_source: str) -> Tuple[str, Optional[str], bool]:
+        """
+        Retrieves user's profile picture using getChat.
+        Supports dual-bot fallbacks if update_source is set to 'both' to prevent
+        unnecessary chat_not_found flags if the user only has one of our bots started.
+        """
         chat_not_found = False
         picture_file = settings.DEFAULT_PROFILE_PICTURE
         image_path = None
+        chat_resp = None
 
-        # Call getChat using the bot instance matching the update source
-        if update_source == "hilfenbot":
-            bot = hilfen_bot
+        # Resolve getChat utilizing dual-bot fallbacks when using 'both' source
+        if update_source == "both":
+            chat_resp = await euro_bot.send_request("getChat", {"chat_id": str(user_id)})
+            if not chat_resp.success:
+                logger.warning(f"getChat failed for {user_id} via euro_bot under 'both' source. Trying hilfen_bot fallback.")
+                chat_resp = await hilfen_bot.send_request("getChat", {"chat_id": str(user_id)})
         else:
-            bot = euro_bot
+            bot = hilfen_bot if update_source == "hilfenbot" else euro_bot
+            chat_resp = await bot.send_request("getChat", {"chat_id": str(user_id)})
 
-        chat_resp = await bot.send_request("getChat", {"chat_id": str(user_id)})
-
-        if not chat_resp.success:
+        # Evaluate the final response
+        if not chat_resp or not chat_resp.success:
             chat_not_found = True
-            logger.warning(f"getChat failed for {user_id} via {update_source}: {chat_resp.error_message}")
+            error_msg = chat_resp.error_message if chat_resp else "No response"
+            logger.warning(f"getChat failed entirely for {user_id} via {update_source}: {error_msg}")
             return picture_file, image_path, chat_not_found
 
         photo_obj = chat_resp.data.get("result", {}).get("photo")
