@@ -34,8 +34,9 @@ class UpsertMemberService:
         # 1. Prepare Data
         upsert_data = payload.model_dump(exclude_unset=True)
         
-        # Business Rule: Reset chat_not_found
+        # Business Rule: Reset chat_not_found & Set Eurobot presence flag
         upsert_data["chat_not_found"] = False
+        upsert_data["is_in_eurobot"] = True
 
         try:
             # 2. Call Repo (Upsert)

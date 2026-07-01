@@ -2,7 +2,8 @@ import logging
 import sys
 import asyncio  # <-- Added to manage background tasks
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends  # <-- Added Depends for DB injection
+from sqlalchemy.ext.asyncio import AsyncSession  # <-- Added for database type hinting
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import register_middleware
@@ -23,6 +24,8 @@ from app.modules.hilfen.router import router as hilfen_router
 
 from app.shared.clients.storage import storage_client
 from app.shared.queue_worker import run_queue_worker  # <-- Imported queue worker loop
+from app.shared.cron_sync_service import CronSyncService  # <-- Imported universal cron service
+from app.core.database import get_db  # <-- Imported database dependency
 
 # --- LIFESPAN MANAGER ---
 @asynccontextmanager
@@ -84,3 +87,15 @@ if mode == "eurobot" or mode == "all":
 @app.get("/health")
 async def health_check():  # Added 'async'
     return {"status": "ok", "mode": mode}
+
+# --- UNIVERSAL CRON ENDPOINT ---
+@app.post("/webhook/hoviat/v1/cron-sync")
+async def trigger_cron_sync(db: AsyncSession = Depends(get_db)):
+    """
+    Exposes a secure POST webhook endpoint to trigger the universal cron sync.
+    Can be pinged periodically by external schedulers (e.g. Linux Crontab, cron-job.org).
+    """
+    logger.info("🔄 Triggering universal database cron synchronization...")
+    service = CronSyncService(db)
+    result = await service.execute(batch_size=20)
+    return result

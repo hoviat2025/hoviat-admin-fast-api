@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, BigInteger, TIMESTAMP, text
 from sqlalchemy.sql import func
-from app.models.base import Base  # <--- Imported from the proper location
+from app.models.base import Base  
 
 class User(Base):
     __tablename__ = "users_eurobot"
@@ -31,6 +31,10 @@ class User(Base):
     is_ban = Column(Boolean, default=False)
     is_registered = Column(Boolean, default=False)
     chat_not_found = Column(Boolean, default=False)
+    
+    # Bot Presence Identifiers
+    is_in_eurobot = Column(Boolean, default=False, nullable=False)
+    is_in_hilfen_bot = Column(Boolean, default=False, nullable=False)
 
     # Numbers / Timestamps (Eurobot)
     score = Column(Integer, default=0)
