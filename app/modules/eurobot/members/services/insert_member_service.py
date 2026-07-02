@@ -1,6 +1,8 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 # Core & Models
 from app.models.user import User
@@ -10,9 +12,8 @@ from app.core.exceptions import ServiceError
 # Schemas
 from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
 
-# --- ADDED IMPORTS ---
-from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
+# Queue Models
+from app.models.job_queue import JobQueue, JobStatus, JobPriority
 
 logger = logging.getLogger(__name__)
 
@@ -39,37 +40,50 @@ class InsertMemberService:
         # 1. Prepare Data
         insert_data = payload.model_dump(exclude_unset=True)
         
-        # Business Rule: Explicitly set chat_not_found to False
+        # Business Rule: Explicitly set chat_not_found to False & set Eurobot presence
         insert_data["chat_not_found"] = False
+        insert_data["is_in_eurobot"] = True
 
         try:
             # 2. Call Repo (Creates the user object in session)
             new_user = await self.repo.create(insert_data)
             
             # 3. Commit Transaction
-            # This saves the user to the DB so the UpdateChannelPostService can access it.
+            # This saves the user to the DB first.
             await self.db.commit()
             
             # Refresh ensures the instance is up-to-date and attached to the session
-            # (useful if the DB triggers updated default timestamps, etc.)
             await self.db.refresh(new_user)
 
-            # --- 4. Call Update Channel Service ---
+            # 4. Queue Background Channel Sync (Medium Priority)
             try:
-                pass
-                # update_service = UpdateChannelPostService(self.db)
-                
-                # # We use new_user.user_id (which you confirmed is the field name)
-                # update_payload = UpdateChannelPostRequest(user_id=new_user.user_id)
-                
-                # # Execute the update. 
-                # # The service returns the updated user object (with sync timestamps), so we update our reference.
-                # new_user = await update_service.execute(update_payload)
+                # Insert a MEDIUM priority pending job. If an active job for this user 
+                # already exists, we update the priority using GREATEST
+                stmt = (
+                    pg_insert(JobQueue)
+                    .values(
+                        user_id=new_user.user_id,
+                        priority=JobPriority.MEDIUM.value,
+                        status=JobStatus.PENDING,
+                        source="eurobot"
+                    )
+                    .on_conflict_do_update(
+                        index_elements=[JobQueue.user_id],
+                        index_where=(JobQueue.status == JobStatus.PENDING),  # Aligned with database [1]
+                        set_={  # <-- Using set_ to prevent keyword collisions [2]
+                            "priority": func.greatest(JobQueue.priority, JobPriority.MEDIUM.value),
+                            "updated_at": func.now()
+                        }
+                    )
+                )
+                await self.db.execute(stmt)
+                await self.db.commit()
+                logger.info(f"Enqueued background sync task (Medium) for newly inserted user {new_user.user_id}")
                 
             except Exception as e:
                 # If the channel update fails, we log it but do NOT rollback the User creation.
                 # The user was successfully created in step 3.
-                logger.error(f"User {new_user.user_id} created, but failed to update channel post: {e}")
+                logger.error(f"User {new_user.user_id} created, but failed to queue background sync: {e}")
                 
             return new_user
 

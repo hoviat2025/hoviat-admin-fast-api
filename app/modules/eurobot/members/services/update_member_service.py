@@ -1,13 +1,15 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
 from app.models.user import User
 from app.modules.eurobot.members.schemas.update_request import BotUpdateMemberRequest
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
 
-# --- ADDED IMPORTS ---
-from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
+# Queue Models
+from app.models.job_queue import JobQueue, JobStatus, JobPriority
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,9 @@ class UpdateMemberService:
 
         if not update_data:
             raise ServiceError(code="INVALID_INPUT", message="No fields provided for update", status_code=422)
+
+        # Set Eurobot presence flag upon active profile update
+        update_data["is_in_eurobot"] = True
 
         # 2. Data Access: Call the Repo
         updated_user = await self.repo.update(
@@ -41,23 +46,34 @@ class UpdateMemberService:
         # We commit here so the DB has the latest data before the channel service runs.
         await self.db.commit()
         
-        # 5. Call Update Channel Service
+        # 5. Queue Background Channel Sync (Medium Priority)
         try:
-            pass
-            # # We initialize the service
-            # update_service = UpdateChannelPostService(self.db)
-            
-            # # We prepare the request using the user_id from the payload (or the object)
-            # update_payload = UpdateChannelPostRequest(user_id=updated_user.user_id)
-            
-            # # Execute the update. 
-            # # We assign the result back to `updated_user` because the service 
-            # # might have updated the `channel_updated_at` or message ID fields.
-            # updated_user = await update_service.execute(update_payload)
+            # Insert a MEDIUM priority pending job. If an active job for this user 
+            # already exists, we update the priority using GREATEST
+            stmt = (
+                pg_insert(JobQueue)
+                .values(
+                    user_id=updated_user.user_id,
+                    priority=JobPriority.MEDIUM.value,
+                    status=JobStatus.PENDING,
+                    source="eurobot"
+                )
+                .on_conflict_do_update(
+                    index_elements=[JobQueue.user_id],
+                    index_where=(JobQueue.status == JobStatus.PENDING),  # Aligned with database [1]
+                    set_={  # <-- Using set_ to prevent keyword collisions [2]
+                        "priority": func.greatest(JobQueue.priority, JobPriority.MEDIUM.value),
+                        "updated_at": func.now()
+                    }
+                )
+            )
+            await self.db.execute(stmt)
+            await self.db.commit()
+            logger.info(f"Enqueued background sync task (Medium) for updated user {updated_user.user_id}")
             
         except Exception as e:
             # If the channel sync fails, we log it but do NOT crash the request.
             # The database update (Step 2 & 4) was successful, so we return the user.
-            logger.error(f"User {updated_user.user_id} updated in DB, but failed to sync channel post: {e}")
+            logger.error(f"User {updated_user.user_id} updated in DB, but failed to queue background sync: {e}")
 
         return updated_user
