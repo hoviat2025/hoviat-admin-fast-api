@@ -1,14 +1,16 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.models.user import User
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
 from app.modules.hilfen.members.schemas.request import HilfenInsertMemberRequest
 
-# Channel Posting Service & Request
-from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
+# Queue Models
+from app.models.job_queue import JobQueue, JobStatus, JobPriority
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +64,35 @@ class UpsertHilfenMemberService:
                 setattr(user_obj, key, incoming_value)
 
     async def _trigger_channel_update(self, user_id: int) -> None:
-        """Triggers the async channel posting service to update posts on Telegram."""
+        """Enqueues a medium-priority background sync task for the Hilfen bot."""
         try:
-            channel_service = UpdateChannelPostService(self.db)
-            await channel_service.execute(user_id, update_source="hilfenbot")
+            # Enqueue a MEDIUM priority pending job. If an active job for this user 
+            # already exists, we update the priority using GREATEST
+            stmt = (
+                pg_insert(JobQueue)
+                .values(
+                    user_id=user_id,
+                    priority=JobPriority.MEDIUM.value,
+                    status=JobStatus.PENDING,
+                    source="hilfenbot"
+                )
+                .on_conflict_do_update(
+                    index_elements=[JobQueue.user_id],
+                    index_where=(JobQueue.status == JobStatus.PENDING),  # Aligned with database [1]
+                    set_={  # <-- Using set_ to prevent keyword collisions [2]
+                        "priority": func.greatest(JobQueue.priority, JobPriority.MEDIUM.value),
+                        "updated_at": func.now()
+                    }
+                )
+            )
+            await self.db.execute(stmt)
+            await self.db.commit()
+            logger.info(f"Enqueued background sync task (Medium) for Hilfen user {user_id}")
+            
         except Exception as e:
             # We log the error but do NOT crash the request or rollback the DB.
             # The database record is our source of truth and has been successfully committed.
-            logger.error(f"User {user_id} upserted in DB, but failed to sync with Telegram channel: {e}")
+            logger.error(f"User {user_id} upserted in DB, but failed to queue background sync: {e}")
 
     async def execute(self, payload: HilfenInsertMemberRequest) -> User:
         """
@@ -86,6 +109,10 @@ class UpsertHilfenMemberService:
                 message="User ID parameter is missing or invalid.",
                 status_code=422
             )
+
+        # Ensure Hilfen presence flag is set so both new inserts 
+        # and existing updates cleanly flag the user as active on Hilfen.
+        db_data["is_in_hilfen_bot"] = True
 
         # 1. Attempt Check-and-Update Route
         user = await self.repo.get_by_id(user_id)
@@ -130,8 +157,8 @@ class UpsertHilfenMemberService:
             else:
                 clean_message = self._clean_db_error(e)
                 raise ServiceError(
-                    code="CONFLICT_UNRESOLVED",
-                    message=f"Database integrity violation occurred: {clean_message}",
+                    code="CONFLICT_OCCURRED",
+                    message=clean_message,
                     status_code=409
                 )
         except Exception as e:
