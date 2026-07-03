@@ -11,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from app.core.config import settings
 from app.core.exceptions import ServiceError
 from app.shared.repositories.user_base import UserBaseRepository
+from app.shared.repositories.job_queue import JobQueueRepository
 
 # Queue Models
 from app.models.job_queue import JobQueue, JobStatus, JobPriority
@@ -24,6 +25,7 @@ class GetQuoteReplyInfoService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = UserBaseRepository(db)
+        self.queue_repo = JobQueueRepository(db)
 
     async def execute(self, user_id: int) -> Dict[str, Any]:
         """
@@ -89,27 +91,12 @@ class GetQuoteReplyInfoService:
                 timeout_seconds = 45
                 
                 while (datetime.now() - start_time).total_seconds() < timeout_seconds:
-                    await self.db.commit()
-                    
-                    # Check if the job is still active
-                    stmt_poll = (
-                        select(JobQueue)
-                        .where(JobQueue.user_id == user_id)
-                        .where(JobQueue.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]))
-                        .execution_options(populate_existing=True)
-                    )
-                    active_job = (await self.db.execute(stmt_poll)).scalars().first()
+                    async with AsyncSession(self.db.bind) as read_session:
+                        active_job = await self.queue_repo.get_active_job(user_id, session=read_session)
                     
                     if not active_job:
-                        # Fetch the final completed state
-                        stmt_final = (
-                            select(JobQueue)
-                            .where(JobQueue.user_id == user_id)
-                            .order_by(JobQueue.id.desc())
-                            .limit(1)
-                            .execution_options(populate_existing=True)
-                        )
-                        final_job = (await self.db.execute(stmt_final)).scalars().first()
+                        async with AsyncSession(self.db.bind) as read_session:
+                            final_job = await self.queue_repo.get_latest_job(user_id, session=read_session)
                         
                         if final_job and final_job.status == JobStatus.COMPLETED:
                             logger.info(f"VIP sync completed successfully for user {user_id}")
@@ -119,11 +106,12 @@ class GetQuoteReplyInfoService:
                         else:
                             break
                     
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.0)
                 else:
                     raise asyncio.TimeoutError("Timeout exceeded waiting for queue worker.")
 
-                user = await self.repo.get_fresh_by_id(user_id)
+                async with AsyncSession(self.db.bind) as read_session:
+                    user = await self.repo.get_fresh_by_id(user_id, session=read_session)
                 if not user:
                     raise ServiceError(
                         code="USER_NOT_FOUND",

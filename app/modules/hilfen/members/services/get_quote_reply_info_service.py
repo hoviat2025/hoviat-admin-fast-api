@@ -59,12 +59,12 @@ class GetHilfenQuoteReplyInfoService:
                 timeout_seconds = 45
 
                 while (datetime.now() - start_time).total_seconds() < timeout_seconds:
-                    # commit to refresh visibility
-                    await self.db.commit()
+                    async with AsyncSession(self.db.bind) as read_session:
+                        active_job = await self.queue_repo.get_active_job(user_id, session=read_session)
 
-                    active_job = await self.queue_repo.get_active_job(user_id)
                     if not active_job:
-                        final_job = await self.queue_repo.get_latest_job(user_id)
+                        async with AsyncSession(self.db.bind) as read_session:
+                            final_job = await self.queue_repo.get_latest_job(user_id, session=read_session)
                         if final_job and final_job.status == JobStatus.COMPLETED:
                             logger.info(f"VIP sync completed successfully for user {user_id}")
                             break
@@ -72,11 +72,12 @@ class GetHilfenQuoteReplyInfoService:
                             raise Exception(f"Queue task failed: {final_job.error_message}")
                         break
 
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.0)
                 else:
                     raise asyncio.TimeoutError("Timeout exceeded waiting for queue worker.")
 
-                user = await self.repo.get_fresh_by_id(user_id)
+                async with AsyncSession(self.db.bind) as read_session:
+                    user = await self.repo.get_fresh_by_id(user_id, session=read_session)
                 if not user:
                     raise ServiceError(
                         code="USER_NOT_FOUND",

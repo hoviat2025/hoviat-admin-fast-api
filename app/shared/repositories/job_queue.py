@@ -30,17 +30,19 @@ class JobQueueRepository:
         await self.db.execute(stmt)
         await self.db.commit()
 
-    async def get_active_job(self, user_id: int):
+    async def get_active_job(self, user_id: int, session: AsyncSession | None = None):
+        s = session or self.db
         stmt = (
             select(JobQueue)
             .where(JobQueue.user_id == user_id)
             .where(JobQueue.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]))
             .execution_options(populate_existing=True)
         )
-        result = await self.db.execute(stmt)
+        result = await s.execute(stmt)
         return result.scalars().first()
 
-    async def get_latest_job(self, user_id: int):
+    async def get_latest_job(self, user_id: int, session: AsyncSession | None = None):
+        s = session or self.db
         stmt = (
             select(JobQueue)
             .where(JobQueue.user_id == user_id)
@@ -48,5 +50,5 @@ class JobQueueRepository:
             .limit(1)
             .execution_options(populate_existing=True)
         )
-        result = await self.db.execute(stmt)
+        result = await s.execute(stmt)
         return result.scalars().first()
