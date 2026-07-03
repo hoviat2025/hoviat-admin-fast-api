@@ -48,6 +48,8 @@ class GetQuoteReplyInfoService:
         
         if not user.telegram_message_id:
             should_update = True
+        elif not user.public_message_id:
+            should_update = True
         elif user.channel_updated_at is None:
             should_update = True
         elif user.updated_at and user.updated_at >= user.channel_updated_at:

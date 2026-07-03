@@ -6,8 +6,14 @@ from app.core.schemas import StandardResponse
 
 from app.modules.hilfen.members.schemas.request import HilfenInsertMemberRequest
 from app.modules.hilfen.members.schemas.response import HilfenUserResponse
+from app.modules.hilfen.members.schemas.quote_reply_info_response import (
+    HilfenQuoteReplyInfoResponse,
+)
 from app.modules.hilfen.members.services.get_member_service import GetHilfenMemberService
 from app.modules.hilfen.members.services.upsert_member_service import UpsertHilfenMemberService
+from app.modules.hilfen.members.services.get_quote_reply_info_service import (
+    GetHilfenQuoteReplyInfoService,
+)
 
 router = APIRouter()
 
@@ -35,3 +41,19 @@ async def upsert_member(
     service = UpsertHilfenMemberService(db)
     user = await service.execute(payload)
     return StandardResponse.success(data=HilfenUserResponse.from_db_model(user))
+
+
+@router.get(
+    "/quote_reply_info",
+    response_model=StandardResponse[HilfenQuoteReplyInfoResponse],
+)
+async def quote_reply_info(
+    user_id: int = Query(..., description="The Legacy user ID to query"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns formatted components and channel/group/public message ids for a hilfen user.
+    """
+    service = GetHilfenQuoteReplyInfoService(db)
+    data = await service.execute(user_id)
+    return StandardResponse.success(data=HilfenQuoteReplyInfoResponse(**data))
