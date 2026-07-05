@@ -3,8 +3,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select
 from fastapi.encoders import jsonable_encoder
 
 # Core & Config
@@ -14,7 +13,7 @@ from app.shared.repositories.user_base import UserBaseRepository
 from app.shared.repositories.job_queue import JobQueueRepository
 
 # Queue Models
-from app.models.job_queue import JobQueue, JobStatus, JobPriority
+from app.models.job_queue import JobStatus
 
 # Local Message Formatter
 from app.modules.eurobot.channels.services.format_messages import create_telegram_message
@@ -63,28 +62,7 @@ class GetQuoteReplyInfoService:
         if should_update:
             try:
                 logger.info(f"Enqueuing VIP update task for user {user_id}")
-                
-                # Insert a HIGH priority pending job. If an active job for this user 
-                # already exists, upgrade its priority to HIGH
-                stmt = (
-                    pg_insert(JobQueue)
-                    .values(
-                        user_id=user_id,
-                        priority=JobPriority.HIGH.value,
-                        status=JobStatus.PENDING,
-                        source="eurobot"
-                    )
-                    .on_conflict_do_update(
-                        index_elements=[JobQueue.user_id],
-                        index_where=(JobQueue.status == JobStatus.PENDING),  # Aligned with database
-                        set_={
-                            "priority": func.greatest(JobQueue.priority, JobPriority.HIGH.value),
-                            "updated_at": func.now()
-                        }
-                    )
-                )
-                await self.db.execute(stmt)
-                await self.db.commit()
+                await self.queue_repo.enqueue_high_priority(user_id=user_id, source="eurobot")
 
                 # Poll and await the task's completion (VIP request-response style)
                 start_time = datetime.now()

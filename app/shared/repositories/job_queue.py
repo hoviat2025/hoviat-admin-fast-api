@@ -30,6 +30,27 @@ class JobQueueRepository:
         await self.db.execute(stmt)
         await self.db.commit()
 
+    async def enqueue_medium_priority(self, user_id: int, source: str = "eurobot") -> None:
+        stmt = (
+            pg_insert(JobQueue)
+            .values(
+                user_id=user_id,
+                priority=JobPriority.MEDIUM.value,
+                status=JobStatus.PENDING,
+                source=source,
+            )
+            .on_conflict_do_update(
+                index_elements=[JobQueue.user_id],
+                index_where=(JobQueue.status == JobStatus.PENDING),
+                set_={
+                    "priority": func.greatest(JobQueue.priority, JobPriority.MEDIUM.value),
+                    "updated_at": func.now(),
+                },
+            )
+        )
+        await self.db.execute(stmt)
+        await self.db.commit()
+
     async def get_active_job(self, user_id: int, session: AsyncSession | None = None):
         s = session or self.db
         stmt = (
