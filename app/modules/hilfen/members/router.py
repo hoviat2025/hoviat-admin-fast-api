@@ -10,6 +10,7 @@ from app.modules.hilfen.members.schemas.quote_reply_info_response import (
     HilfenQuoteReplyInfoResponse,
 )
 from app.modules.hilfen.members.services.get_member_service import GetHilfenMemberService
+from app.modules.hilfen.members.services.insert_member_service import InsertHilfenMemberService
 from app.modules.hilfen.members.services.upsert_member_service import UpsertHilfenMemberService
 from app.modules.hilfen.members.services.get_quote_reply_info_service import (
     GetHilfenQuoteReplyInfoService,
@@ -42,6 +43,17 @@ async def upsert_member(
     user = await service.execute(payload)
     return StandardResponse.success(data=HilfenUserResponse.from_db_model(user))
 
+@router.post("/insert_member", response_model=StandardResponse[HilfenUserResponse])
+async def insert_member(
+    payload: HilfenInsertMemberRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Inserts a new user record. Returns 409 if user already exists.
+    """
+    service = InsertHilfenMemberService(db)
+    user = await service.execute(payload)
+    return StandardResponse.success(data=HilfenUserResponse.from_db_model(user))
 
 @router.get(
     "/quote_reply_info",
