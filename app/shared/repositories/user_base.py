@@ -36,6 +36,11 @@ class UserBaseRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    async def get_by_hilfen_message_id(self, message_id: int) -> User | None:
+        stmt = select(User).where(User.hilfen_message_id == message_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def create(self, create_data: dict) -> User:
         stmt = (
             insert(User)

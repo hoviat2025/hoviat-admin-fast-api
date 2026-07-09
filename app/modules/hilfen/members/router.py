@@ -10,6 +10,7 @@ from app.modules.hilfen.members.services.update_member_service import UpdateHilf
 from app.modules.hilfen.members.schemas.quote_reply_info_response import (
     HilfenQuoteReplyInfoResponse,
 )
+from app.modules.hilfen.members.services.get_member_by_message_service import GetMemberByHilfenMessageService
 from app.modules.hilfen.members.services.get_member_service import GetHilfenMemberService
 from app.modules.hilfen.members.services.insert_member_service import InsertHilfenMemberService
 from app.modules.hilfen.members.services.upsert_member_service import UpsertHilfenMemberService
@@ -43,6 +44,18 @@ async def upsert_member(
     service = UpsertHilfenMemberService(db)
     user = await service.execute(payload)
     return StandardResponse.success(data=HilfenUserResponse.from_db_model(user))
+
+@router.get("/member_by_message", response_model=StandardResponse[HilfenUserResponse])
+async def member_by_message(
+    hilfen_message_id: int = Query(..., description="The Hilfen channel message ID to look up"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieves user data by their Hilfen channel message ID.
+    """
+    service = GetMemberByHilfenMessageService(db)
+    user = await service.execute(hilfen_message_id)
+    return StandardResponse.success(data=user)
 
 @router.post("/insert_member", response_model=StandardResponse[HilfenUserResponse])
 async def insert_member(
