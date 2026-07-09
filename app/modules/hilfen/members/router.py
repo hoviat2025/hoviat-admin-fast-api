@@ -6,6 +6,7 @@ from app.core.schemas import StandardResponse
 
 from app.modules.hilfen.members.schemas.request import HilfenInsertMemberRequest
 from app.modules.hilfen.members.schemas.response import HilfenUserResponse
+from app.modules.hilfen.members.services.update_member_service import UpdateHilfenMemberService
 from app.modules.hilfen.members.schemas.quote_reply_info_response import (
     HilfenQuoteReplyInfoResponse,
 )
@@ -52,6 +53,18 @@ async def insert_member(
     Inserts a new user record. Returns 409 if user already exists.
     """
     service = InsertHilfenMemberService(db)
+    user = await service.execute(payload)
+    return StandardResponse.success(data=HilfenUserResponse.from_db_model(user))
+
+@router.post("/update_member", response_model=StandardResponse[HilfenUserResponse])
+async def update_member(
+    payload: HilfenInsertMemberRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Updates an existing user record. Returns 404 if user does not exist.
+    """
+    service = UpdateHilfenMemberService(db)
     user = await service.execute(payload)
     return StandardResponse.success(data=HilfenUserResponse.from_db_model(user))
 

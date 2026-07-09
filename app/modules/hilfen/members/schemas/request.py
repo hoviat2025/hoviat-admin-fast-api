@@ -52,3 +52,12 @@ class HilfenInsertMemberRequest(BaseModel):
             "hilfen_all_projects_done": int(self.all_projects_done) if self.all_projects_done.isdigit() else 0,
             "hilfen_limits_time": int(self.limits_time) if self.limits_time.isdigit() else 0,
         }
+
+    def to_update_dict(self) -> dict:
+        """
+        Translates legacy Hilfen fields for partial updates.
+        Reuses to_db_dict() translation logic but excludes unset fields and primary key.
+        """
+        raw = self.model_dump(exclude_unset=True, exclude={"user_id"})
+        full = self.to_db_dict()
+        return {k: v for k, v in full.items() if k in raw and k != "counter"}
