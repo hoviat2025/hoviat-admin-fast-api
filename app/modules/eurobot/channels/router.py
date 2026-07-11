@@ -16,7 +16,6 @@ from app.modules.eurobot.members.schemas.bot_user_dto import BotUserResponse
 
 # Services
 from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-from app.modules.eurobot.channels.services.batch_update_channel_service import BatchUpdateChannelService
 from app.modules.eurobot.channels.services.set_group_message_service import SetGroupMessageService
 # Import NEW Service
 from app.modules.eurobot.channels.services.set_public_message_service import SetPublicMessageService
@@ -38,17 +37,6 @@ async def update_post(
     service = UpdateChannelPostService(db)
     updated_user = await service.execute(payload)
     return StandardResponse.success(data=updated_user)
-
-
-
-@router.post("/batch_sync_posts", response_model=StandardResponse[Dict[str, Any]])
-async def batch_sync_posts(
-    limit: int = Query(25, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
-):
-    service = BatchUpdateChannelService(db)
-    report = await service.execute(limit=limit)
-    return StandardResponse.success(data=report)
 
 
 # --- WEBHOOK ENDPOINTS ---

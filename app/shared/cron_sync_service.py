@@ -1,17 +1,21 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_, func
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select, or_, and_
 
 # Database Models
 from app.models.user import User
-from app.models.job_queue import JobQueue, JobStatus, JobPriority
+from app.models.job_queue import JobQueue, JobStatus
+
+# Repositories
+from app.shared.repositories.job_queue import JobQueueRepository
 
 logger = logging.getLogger(__name__)
 
 class CronSyncService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        # Instantiate the Repository wrapper
+        self.queue_repo = JobQueueRepository(db)
 
     async def execute(self, batch_size: int = 20) -> dict:
         """
@@ -25,7 +29,8 @@ class CronSyncService:
         logger.info(f"⏳ Running Universal CronSyncService (Batch Size: {batch_size})")
 
         # 1. Query for users needing sync who are NOT already in the queue
-        # We perform a LEFT JOIN on job_queue and filter for NULL to exclude active tasks
+        # We perform a subquery exists check to exclude active tasks
+        # (This is a cleaner approach to avoid multiple queue entries per user)
         active_jobs_subq = (
             select(JobQueue.id)
             .where(
@@ -85,33 +90,19 @@ class CronSyncService:
                 else:
                     source = "eurobot"
 
-                # Enqueue as LOW priority (1).
-                # Fixed: Changed 'set' keyword parameter to 'set_' to prevent Python collisions
-                stmt_enqueue = (
-                    pg_insert(JobQueue)
-                    .values(
-                        user_id=user.user_id,
-                        priority=JobPriority.LOW.value,
-                        status=JobStatus.PENDING,
-                        source=source
-                    )
-                    .on_conflict_do_update(
-                        index_elements=[JobQueue.user_id],
-                        index_where=(JobQueue.status == JobStatus.PENDING),
-                        set_={  # <-- Aligned with SQLAlchemy parameters
-                            # Retain the higher priority if a collision occurs
-                            "priority": func.greatest(JobQueue.priority, JobPriority.LOW.value),
-                            "updated_at": func.now()
-                        }
-                    )
+                # Enqueue as LOW priority (1) using our repository method.
+                # We set commit=False so we can commit all records together at the end.
+                await self.queue_repo.enqueue_low_priority(
+                    user_id=user.user_id,
+                    source=source,
+                    commit=False
                 )
-                await self.db.execute(stmt_enqueue)
                 enqueued_count += 1
                 
             except Exception as e:
                 logger.error(f"Failed to enqueue cron sync for user {user.user_id}: {e}")
 
-        # Commit all enqueued tasks in a single transaction block
+        # Commit all enqueued tasks in a single database transaction block
         await self.db.commit()
         
         logger.info(f"✅ CronSyncService completed. Enqueued {enqueued_count} low-priority sync tasks.")

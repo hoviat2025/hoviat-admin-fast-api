@@ -1,8 +1,8 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, update, func
-from sqlalchemy.orm import aliased  # <-- Added to handle self-join exists check
+from sqlalchemy import select, update, func, or_, and_
+from sqlalchemy.orm import aliased
 
 # Database and Models
 from app.core.database import AsyncSessionLocal
@@ -13,33 +13,52 @@ from app.modules.eurobot.channels.services.update_channel_post_service import Up
 
 logger = logging.getLogger(__name__)
 
-async def run_queue_worker():
-    """
-    Continuous background loop that processes jobs from the job_queue table.
-    Enforces a strict global rate limit of 6 tasks/minute, reserving slots for VIPs.
-    """
-    logger.info("🚀 Background queue worker loop initialized.")
-    
-    # 1. Recover Orphaned Jobs
+# ==============================================================================
+# CONFIGURABLE RATE LIMITS (Sliding 60-second window)
+# ==============================================================================
+BACKGROUND_LANE_LIMIT = 3   # Max low/medium priority jobs completed per minute
+VIP_LANE_LIMIT = 3          # Max high priority (VIP) jobs completed per minute
+
+
+async def run_vip_queue_worker():
+    """Runs the dedicated worker for HIGH priority (VIP) jobs."""
+    await run_worker_lane(is_vip=True, lane_name="VIP Lane")
+
+
+async def run_background_queue_worker():
+    """Runs the dedicated worker for LOW and MEDIUM priority background jobs."""
+    # Only reset orphaned jobs once on startup
     try:
         await reset_orphaned_jobs()
     except Exception as e:
         logger.error(f"Failed to reset orphaned jobs during startup: {e}")
+        
+    await run_worker_lane(is_vip=False, lane_name="Background Lane")
 
-    # 2. Main Processing Loop
+
+# ==============================================================================
+# GENERIC WORKER RUNNER
+# ==============================================================================
+
+async def run_worker_lane(is_vip: bool, lane_name: str):
+    """
+    Generic execution loop runner for a specific priority lane.
+    """
+    logger.info(f"🚀 {lane_name} worker loop initialized.")
+    
     while True:
         try:
             async with AsyncSessionLocal() as session:
                 
-                # Fetch next candidate job without committing or locking yet
-                job = await fetch_next_pending_job(session)
+                # Fetch next candidate job for this specific lane
+                job = await fetch_next_pending_job(session, is_vip=is_vip)
                 
                 if not job:
                     await asyncio.sleep(5)
                     continue
 
-                # We have a candidate job! Check sliding-window limits
-                limit_exceeded = await check_rate_limits(session, job.priority)
+                # Check sliding-window rate limits for this specific lane
+                limit_exceeded = await check_rate_limits(session, is_vip=is_vip)
                 
                 if limit_exceeded:
                     await session.rollback()
@@ -49,20 +68,21 @@ async def run_queue_worker():
                 # Mark the job as 'processing' and commit immediately
                 job.status = JobStatus.PROCESSING
                 job.attempts += 1
+                job.updated_at = datetime.now(timezone.utc) # <-- Explicitly set attempt start time
                 await session.commit()
                 
                 job_id = job.id
                 user_id = job.user_id
                 source = job.source
 
-            # Run the actual heavy Telegram/DB syncing service
+            # Run the actual heavy Telegram/DB syncing service (Non-blocking to other lane)
             await execute_job_task(job_id, user_id, source)
 
         except asyncio.CancelledError:
-            logger.info("🛑 Queue worker received cancellation signal. Stopping cleanly.")
+            logger.info(f"🛑 {lane_name} received cancellation signal. Stopping cleanly.")
             break
         except Exception as e:
-            logger.error(f"Error in queue worker execution loop: {e}", exc_info=True)
+            logger.error(f"Error in {lane_name} execution loop: {e}", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -86,13 +106,10 @@ async def reset_orphaned_jobs():
             logger.info(f"🔄 Recovered {rows_reset} orphaned jobs stuck in 'processing' status.")
 
 
-async def fetch_next_pending_job(session) -> JobQueue | None:
+async def fetch_next_pending_job(session, is_vip: bool) -> JobQueue | None:
     """
     Finds and locks the next candidate pending job sorted by priority and age.
-    
-    Guarantees that we never pick up a pending job for a user if they currently
-    have another job in 'processing' status. This enforces strict sequential, 
-    non-concurrent execution for any single user.
+    Filters selection based on whether the lane is configured for VIPs or Background tasks.
     """
     jq_alias = aliased(JobQueue)
     
@@ -106,11 +123,18 @@ async def fetch_next_pending_job(session) -> JobQueue | None:
         .exists()
     )
     
+    # Lane isolation logic
+    if is_vip:
+        priority_filter = JobQueue.priority >= JobPriority.HIGH.value
+    else:
+        priority_filter = JobQueue.priority < JobPriority.HIGH.value
+    
     # Fetch the next pending job ONLY if no other job for the same user is currently processing
     stmt = (
         select(JobQueue)
         .where(
             JobQueue.status == JobStatus.PENDING,
+            priority_filter,
             ~processing_exists  # NOT EXISTS processing job for the same user
         )
         .order_by(JobQueue.priority.desc(), JobQueue.created_at.asc())
@@ -121,39 +145,43 @@ async def fetch_next_pending_job(session) -> JobQueue | None:
     return result.scalars().first()
 
 
-async def check_rate_limits(session, priority: int) -> bool:
+async def check_rate_limits(session, is_vip: bool) -> bool:
     """
-    Returns True if executing a job of the given priority would violate rate limits.
-    - Global Limit: Max 6 total jobs completed in the last 60 seconds.
-    - Non-VIP Cap: Max 3 low/medium jobs completed in the last 60 seconds.
+    Returns True if executing a job in the given lane would violate its specific limits.
+    Counts all attempts (completed, failed, or retries) made in the last 60 seconds.
     """
     one_minute_ago = datetime.now(timezone.utc) - timedelta(minutes=1)
 
-    # 1. Check Global Limit (All completed jobs)
-    stmt_total = (
+    # Base filter to isolate VIP vs Background lanes
+    if is_vip:
+        lane_filter = JobQueue.priority >= JobPriority.HIGH.value
+        limit = VIP_LANE_LIMIT
+    else:
+        lane_filter = JobQueue.priority < JobPriority.HIGH.value
+        limit = BACKGROUND_LANE_LIMIT
+
+    # Query to count any job attempted in the last 60 seconds:
+    # - JobStatus.COMPLETED (Successfully done)
+    # - JobStatus.FAILED (Permanently dead)
+    # - JobStatus.PROCESSING (Currently active)
+    # - JobStatus.PENDING with attempts > 0 (Failed and reset for a retry)
+    stmt = (
         select(func.count(JobQueue.id))
         .where(
-            JobQueue.status == JobStatus.COMPLETED,
-            JobQueue.completed_at >= one_minute_ago
-        )
-    )
-    total_completed = (await session.execute(stmt_total)).scalar() or 0
-    if total_completed >= 6:
-        return True
-
-    # 2. Check Non-VIP Cap (If the next job is Low/Medium priority)
-    if priority < JobPriority.HIGH.value:
-        stmt_non_vip = (
-            select(func.count(JobQueue.id))
-            .where(
-                JobQueue.status == JobStatus.COMPLETED,
-                JobQueue.completed_at >= one_minute_ago,
-                JobQueue.priority < JobPriority.HIGH.value
+            lane_filter,
+            JobQueue.updated_at >= one_minute_ago,
+            or_(
+                JobQueue.status.in_([JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.PROCESSING]),
+                and_(
+                    JobQueue.status == JobStatus.PENDING,
+                    JobQueue.attempts > 0
+                )
             )
         )
-        non_vip_completed = (await session.execute(stmt_non_vip)).scalar() or 0
-        if non_vip_completed >= 3:
-            return True
+    )
+    completed_count = (await session.execute(stmt)).scalar() or 0
+    if completed_count >= limit:
+        return True
 
     return False
 
@@ -177,6 +205,9 @@ async def execute_job_task(job_id: int, user_id: int, source: str):
         try:
             job = await session.get(JobQueue, job_id)
             if job:
+                # Explicitly update the modification timestamp on completion/failure
+                job.updated_at = datetime.now(timezone.utc)
+                
                 if error_occurred is None:
                     job.status = JobStatus.COMPLETED
                     job.completed_at = datetime.now(timezone.utc)

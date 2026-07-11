@@ -23,7 +23,8 @@ from app.modules.eurobot.router import router as eurobot_router
 from app.modules.hilfen.router import router as hilfen_router
 
 from app.shared.clients.storage import storage_client
-from app.shared.queue_worker import run_queue_worker  # <-- Imported queue worker loop
+# Import the two separate worker lane runners
+from app.shared.queue_worker import run_vip_queue_worker, run_background_queue_worker  
 from app.shared.cron_sync_service import CronSyncService  # <-- Imported universal cron service
 from app.core.database import get_db  # <-- Imported database dependency
 
@@ -34,24 +35,34 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting up...")
     storage_client.start() 
 
-    # Launch the queue worker task in the background (Non-blocking)
-    logger.info("⚙️ Initializing background queue worker...")
-    worker_task = asyncio.create_task(run_queue_worker())
+    # Launch both queue worker tasks in the background concurrently
+    logger.info("⚙️ Initializing concurrent queue worker lanes...")
+    background_worker_task = asyncio.create_task(run_background_queue_worker())
+    vip_worker_task = asyncio.create_task(run_vip_queue_worker())
 
     yield # Application runs here
     
     # 2. Shutdown
     logger.info("🛑 Shutting down...")
     
-    # Cancel the background worker loop and wait for it to cleanly stop
-    logger.info("🛑 Cancelling queue worker loop...")
-    worker_task.cancel()
-    try:
-        await worker_task
-    except asyncio.CancelledError:
-        logger.info("✅ Queue worker loop stopped successfully.")
-    except Exception as e:
-        logger.error(f"❌ Error while shutting down queue worker: {e}")
+    # Cancel both background worker loops and wait for them to cleanly stop
+    logger.info("🛑 Cancelling queue worker loops...")
+    background_worker_task.cancel()
+    vip_worker_task.cancel()
+    
+    # Cleanly await termination results of both tasks
+    results = await asyncio.gather(
+        background_worker_task,
+        vip_worker_task,
+        return_exceptions=True
+    )
+    
+    for i, res in enumerate(results):
+        lane_name = "Background Lane" if i == 0 else "VIP Lane"
+        if isinstance(res, asyncio.CancelledError):
+            logger.info(f"✅ {lane_name} stopped successfully.")
+        elif isinstance(res, Exception):
+            logger.error(f"❌ Error while shutting down {lane_name}: {res}")
 
     storage_client.stop()
 
