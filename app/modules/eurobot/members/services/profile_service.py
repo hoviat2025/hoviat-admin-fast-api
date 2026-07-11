@@ -2,14 +2,17 @@ from app.shared.bot_instances import euro_bot
 from app.shared.clients.storage import storage_client
 import uuid
 
-async def save_user_profile_to_cloud(chat_id: int):
+async def save_user_profile_to_cloud(chat_id: int, bot=None):
     """
     Downloads user profile photo and uploads to Cloud Storage.
     Returns: Dict {'image_url': ..., 'image_path': ...} or False on failure/error.
     """
     try:
+        # Use the passed bot instance, otherwise default to euro_bot
+        active_bot = bot if bot is not None else euro_bot
+
         # 1. Get Chat Info
-        chat_resp = await euro_bot.send_request("getChat", {"chat_id": chat_id})
+        chat_resp = await active_bot.send_request("getChat", {"chat_id": chat_id})
         
         if not chat_resp.success:
             print(f"Could not get chat info: {chat_resp.error_message}")
@@ -25,13 +28,13 @@ async def save_user_profile_to_cloud(chat_id: int):
         file_id = photo_obj.get("big_file_id")
 
         # 3. Get File Path
-        file_path = await euro_bot.get_file_path(file_id)
+        file_path = await active_bot.get_file_path(file_id)
         if not file_path:
             print("Could not retrieve file path from Telegram.")
             return False
 
         # 4. Download Binary
-        image_bytes = await euro_bot.download_file(file_path)
+        image_bytes = await active_bot.download_file(file_path)
         if not image_bytes:
             print("Download failed.")
             return False

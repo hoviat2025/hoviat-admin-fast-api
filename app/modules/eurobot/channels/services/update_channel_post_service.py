@@ -177,16 +177,21 @@ class UpdateChannelPostService:
         picture_file = settings.DEFAULT_PROFILE_PICTURE
         image_path = None
         chat_resp = None
+        active_bot = euro_bot  # Default fallback bot
 
         # Resolve getChat utilizing dual-bot fallbacks when using 'both' source
         if update_source == "both":
             chat_resp = await euro_bot.send_request("getChat", {"chat_id": str(user_id)})
+            if chat_resp.success:
+                active_bot = euro_bot
             if not chat_resp.success:
                 logger.warning(f"getChat failed for {user_id} via euro_bot under 'both' source. Trying hilfen_bot fallback.")
                 chat_resp = await hilfen_bot.send_request("getChat", {"chat_id": str(user_id)})
+                if chat_resp.success:
+                    active_bot = hilfen_bot
         else:
-            bot = hilfen_bot if update_source == "hilfenbot" else euro_bot
-            chat_resp = await bot.send_request("getChat", {"chat_id": str(user_id)})
+            active_bot = hilfen_bot if update_source == "hilfenbot" else euro_bot
+            chat_resp = await active_bot.send_request("getChat", {"chat_id": str(user_id)})
 
         # Evaluate the final response
         if not chat_resp or not chat_resp.success:
@@ -199,7 +204,8 @@ class UpdateChannelPostService:
         if not photo_obj or not photo_obj.get("big_file_id"):
             return picture_file, image_path, chat_not_found
 
-        upload_result = await save_user_profile_to_cloud(user_id)
+        # Pass the active bot instance that successfully completed the getChat request
+        upload_result = await save_user_profile_to_cloud(user_id, bot=active_bot)
 
         if upload_result and isinstance(upload_result, dict):
              if upload_result.get("image_url") and upload_result.get("image_path"):
