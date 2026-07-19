@@ -11,6 +11,9 @@ from app.modules.eurobot.members.schemas.bulk_insert_request import (
 from app.modules.eurobot.members.services.insert_member_service import InsertMemberService
 from app.core.exceptions import ServiceError
 
+# Standardized batch size threshold
+BATCH_LIMIT = 20
+
 class BulkInsertMembersService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -24,12 +27,21 @@ class BulkInsertMembersService:
         failed = []
 
         for index, user_data in enumerate(payload):
+            # 1. Enforce batch-size cap to protect gateway limits and prevent timeouts
+            if index >= BATCH_LIMIT:
+                failed.append(BulkInsertFailedItem(
+                    index=index,
+                    code="CONFLICT_OCCURRED",
+                    message=f"Too many requests in a single batch. Only the first {BATCH_LIMIT} are processed. Please retry."
+                ))
+                continue
+
             try:
-                # 1. Execute Single Insert
+                # 2. Execute Single Insert
                 # This returns a DB Model object
                 new_user = await self.single_insert_service.execute(user_data)
 
-                # 2. Add to Success List
+                # 3. Add to Success List
                 successful.append(BulkInsertSuccessItem(
                     index=index,
                     user_id=new_user.user_id,
@@ -37,7 +49,7 @@ class BulkInsertMembersService:
                 ))
 
             except ServiceError as e:
-                # 3. Handle Expected Logic Errors (Conflict, Validation)
+                # 4. Handle Expected Logic Errors (Conflict, Validation)
                 # The single service has already rolled back the DB transaction for this item.
                 failed.append(BulkInsertFailedItem(
                     index=index,
@@ -46,7 +58,7 @@ class BulkInsertMembersService:
                 ))
 
             except Exception as e:
-                # 4. Handle Unexpected Errors
+                # 5. Handle Unexpected Errors
                 # Ensure session is clean for next iteration
                 await self.db.rollback() 
                 failed.append(BulkInsertFailedItem(

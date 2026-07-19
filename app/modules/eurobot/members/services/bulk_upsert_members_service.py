@@ -11,6 +11,9 @@ from app.modules.eurobot.members.schemas.bulk_upsert_request import (
 from app.modules.eurobot.members.services.upsert_member_service import UpsertMemberService
 from app.core.exceptions import ServiceError
 
+# Standardized batch size threshold
+BATCH_LIMIT = 20
+
 class BulkUpsertMembersService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -21,14 +24,13 @@ class BulkUpsertMembersService:
         failed = []
 
         for index, user_data in enumerate(payload):
-            # 1. If index is 5 or greater, mock a standard "CONFLICT_OCCURRED" error response
-            # This avoids hitting the database entirely for these items.
-            if index >= 5:
+            # 1. Enforce batch-size cap to protect gateway limits and prevent timeouts
+            if index >= BATCH_LIMIT:
                 failed.append(BulkUpsertFailedItem(
                     index=index,
                     status="error",
                     code="CONFLICT_OCCURRED",
-                    message="Too many requests in a single batch. Only the first 5 are processed. Please retry."
+                    message=f"Too many requests in a single batch. Only the first {BATCH_LIMIT} are processed. Please retry."
                 ))
                 continue
 
