@@ -23,8 +23,12 @@ from app.modules.eurobot.router import router as eurobot_router
 from app.modules.hilfen.router import router as hilfen_router
 
 from app.shared.clients.storage import storage_client
-# Import the two separate worker lane runners
-from app.shared.queue_worker import run_vip_queue_worker, run_background_queue_worker  
+# Import queue startup recovery and the two worker lane runners
+from app.shared.queue_worker import (
+    recover_orphaned_jobs,
+    run_background_queue_worker,
+    run_vip_queue_worker,
+)
 from app.shared.cron_sync_service import CronSyncService  # <-- Imported universal cron service
 from app.core.database import get_db  # <-- Imported database dependency
 
@@ -33,9 +37,13 @@ from app.core.database import get_db  # <-- Imported database dependency
 async def lifespan(app: FastAPI):
     # 1. Startup
     logger.info("🚀 Starting up...")
-    storage_client.start() 
+    # Recovery must succeed before either worker can consume queue rows.
+    logger.info("Recovering abandoned queue jobs...")
+    await recover_orphaned_jobs()
 
-    # Launch both queue worker tasks in the background concurrently
+    storage_client.start()
+
+    # Launch both queue workers only after recovery has completed.
     logger.info("⚙️ Initializing concurrent queue worker lanes...")
     background_worker_task = asyncio.create_task(run_background_queue_worker())
     vip_worker_task = asyncio.create_task(run_vip_queue_worker())

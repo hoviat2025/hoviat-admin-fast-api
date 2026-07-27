@@ -67,6 +67,10 @@ class CronSyncService:
                 ~active_jobs_subq,            # Queue Avoidance Shield: Must not be in queue
                 sync_needed_filter            # Target missing or out-of-sync posts
             )
+            # Low-priority enqueue holds per-user transaction locks until the
+            # batch commit, so every concurrent batch must acquire them in the
+            # same deterministic order.
+            .order_by(User.user_id.asc())
             .limit(batch_size)
         )
         
