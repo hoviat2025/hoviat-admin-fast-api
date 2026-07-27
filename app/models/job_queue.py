@@ -66,6 +66,8 @@ class JobQueue(Base):
             "idx_job_queue_active_user_job",
             "user_id",
             unique=True,
-            postgresql_where=(status.in_([JobStatus.PENDING, JobStatus.PROCESSING]))
+            # A processing job may have one newer pending successor. The pending-only
+            # constraint coalesces further requests into that successor.
+            postgresql_where=(status == JobStatus.PENDING)
         ),
     )
