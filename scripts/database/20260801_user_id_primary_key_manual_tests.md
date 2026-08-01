@@ -1,6 +1,6 @@
 # Manual checks for the user_id primary-key migration
 
-Run `20260801_make_user_id_primary_key.sql` on the test database, deploy the
+Run `20260802_02_make_user_id_primary_key.sql` on the test database, deploy the
 matching API code, and restart the API before these checks.
 
 ## 1. Inspect the resulting constraints

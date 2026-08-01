@@ -1,4 +1,4 @@
--- Run this first on the test database, during a short maintenance window.
+-- Migration 02 of 03. Run during the same maintenance window as migration 01.
 -- Existing data values are preserved. Only key/constraint ownership changes.
 
 BEGIN;
@@ -122,4 +122,3 @@ ALTER TABLE public.users_eurobot
     ADD CONSTRAINT users_eurobot_pkey PRIMARY KEY (user_id);
 
 COMMIT;
-

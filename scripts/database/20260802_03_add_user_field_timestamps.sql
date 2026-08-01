@@ -1,4 +1,4 @@
--- Run this script in pgAdmin against the database used by this API.
+-- Migration 03 of 03. Run after the user_id primary-key migration.
 -- It adds one database-controlled modification time for every user data field.
 
 BEGIN;
