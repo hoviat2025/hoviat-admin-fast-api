@@ -45,11 +45,11 @@ FIELD_TIMESTAMP_FIELDS = (
 class User(Base):
     __tablename__ = "users_eurobot"
 
-    # Primary Key
-    counter = Column(BigInteger, primary_key=True) 
+    # Shared Telegram identity and primary key
+    user_id = Column(BigInteger, primary_key=True)
 
-    # Identifiers
-    user_id = Column(BigInteger, unique=True, nullable=True)
+    # Eurobot-owned identifier. Hilfen-only users may not have one yet.
+    counter = Column(BigInteger, unique=True, nullable=True)
     accounting_code = Column(String, nullable=True)
     
     # Profile Info

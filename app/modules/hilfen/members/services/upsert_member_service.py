@@ -37,8 +37,8 @@ class UpsertHilfenMemberService:
         removed protected null assignments. Excludes primary key mutation.
         """
         for key, incoming_value in update_data.items():
-            # Skip primary key modification on updates
-            if key == "counter":
+            # user_id is the shared primary key and is only used to find the row.
+            if key == "user_id":
                 continue
 
             if not hasattr(user_obj, key):

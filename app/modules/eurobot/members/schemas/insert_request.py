@@ -4,7 +4,7 @@ from typing import Optional
 class BotInsertMemberRequest(BaseModel):
     # Identifiers
     user_id: int = Field(..., description="The Telegram User ID")
-    counter: Optional[int] = Field(None, description="Primary key counter")
+    counter: Optional[int] = Field(None, description="Eurobot-owned counter")
     accounting_code: Optional[str] = None
 
     # Profile

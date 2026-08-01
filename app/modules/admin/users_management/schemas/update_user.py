@@ -7,7 +7,7 @@ class UpdateUserRequest(BaseModel):
     Only fields defined here can be modified.
     
     Fields EXCLUDED (System/Programmatic):
-    - counter (DB Primary Key)
+    - counter (Eurobot-owned identifier)
     - join_date (Creation Timestamp)
     - updated_at (Auto-updating Timestamp)
     - channel_updated_at (System Timestamp)

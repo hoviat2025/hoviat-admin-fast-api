@@ -31,9 +31,6 @@ class HilfenInsertMemberRequest(BaseModel):
         user_id_int = int(self.user_id) if self.user_id.isdigit() else None
 
         return {
-            # Explicitly force counter to equal user_id to align with business requirements
-            # and bypass out-of-sync PostgreSQL sequences.
-            "counter": user_id_int,
             "user_id": user_id_int,
             
             "phone_number": self.phonenumber if self.phonenumber else None,

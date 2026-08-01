@@ -26,7 +26,6 @@ class HilfenUserRepository(UserBaseRepository):
             "user_id": user_id,
             "username": username,
             "nickname": nickname if nickname else None,
-            "counter": user_id,  # Set counter to match user_id explicitly
         }
         return await self.create(create_data)
 

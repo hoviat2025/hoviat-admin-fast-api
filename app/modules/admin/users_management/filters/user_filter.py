@@ -93,7 +93,6 @@ class UserFilter(Filter):
     # 5. NULL CHECKS (IS NULL)
     # ==========================================
 
-    user_id__isnull: Optional[bool] = Field(default=None, alias="no_user_id")
     accounting_code__isnull: Optional[bool] = Field(default=None, alias="no_accounting_code")
 
     username__isnull: Optional[bool] = Field(default=None, alias="no_username")
@@ -122,7 +121,9 @@ class UserFilter(Filter):
     # 6. CONFIG & SORTING
     # ==========================================
 
-    order_by: list[str] = ["-counter"]
+    # user_id_updated_at is established when a row is created and normally never
+    # changes, making it the most reliable creation-order proxy in this schema.
+    order_by: list[str] = ["-user_id_updated_at"]
 
     class Constants(Filter.Constants):
         model = User

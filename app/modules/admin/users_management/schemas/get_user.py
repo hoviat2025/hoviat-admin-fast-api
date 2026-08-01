@@ -6,11 +6,11 @@ class FullUserResponse(BaseModel):
     """
     Complete User model response including internal counters and external IDs.
     """
-    # Primary Key
-    counter: int = Field(..., description="Internal Database ID")
+    # Eurobot-owned identifier
+    counter: Optional[int] = Field(None, description="Optional Eurobot-owned counter")
 
-    # Identifiers
-    user_id: Optional[int] = Field(None, description="Telegram User ID")
+    # Shared primary key
+    user_id: int = Field(..., description="Telegram User ID")
     accounting_code: Optional[str] = None
     
     # Profile Info
