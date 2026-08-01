@@ -46,45 +46,46 @@ ALTER TABLE public.users_eurobot
 ALTER TABLE public.users_eurobot DISABLE TRIGGER USER;
 
 -- Existing rows predate field-level tracking. Use their current row timestamp as
--- the best available starting time for every value that is already present.
+-- the best available starting time for every field, including fields whose
+-- current value is NULL.
 UPDATE public.users_eurobot
 SET
-    counter_updated_at = CASE WHEN counter IS NOT NULL THEN COALESCE(counter_updated_at, updated_at) END,
-    user_id_updated_at = CASE WHEN user_id IS NOT NULL THEN COALESCE(user_id_updated_at, updated_at) END,
-    accounting_code_updated_at = CASE WHEN accounting_code IS NOT NULL THEN COALESCE(accounting_code_updated_at, updated_at) END,
-    username_updated_at = CASE WHEN username IS NOT NULL THEN COALESCE(username_updated_at, updated_at) END,
-    first_name_updated_at = CASE WHEN first_name IS NOT NULL THEN COALESCE(first_name_updated_at, updated_at) END,
-    last_name_updated_at = CASE WHEN last_name IS NOT NULL THEN COALESCE(last_name_updated_at, updated_at) END,
-    nickname_updated_at = CASE WHEN nickname IS NOT NULL THEN COALESCE(nickname_updated_at, updated_at) END,
-    phone_number_updated_at = CASE WHEN phone_number IS NOT NULL THEN COALESCE(phone_number_updated_at, updated_at) END,
-    whatsapp_number_updated_at = CASE WHEN whatsapp_number IS NOT NULL THEN COALESCE(whatsapp_number_updated_at, updated_at) END,
-    country_updated_at = CASE WHEN country IS NOT NULL THEN COALESCE(country_updated_at, updated_at) END,
-    password_updated_at = CASE WHEN password IS NOT NULL THEN COALESCE(password_updated_at, updated_at) END,
-    mode_updated_at = CASE WHEN mode IS NOT NULL THEN COALESCE(mode_updated_at, updated_at) END,
-    is_ban_updated_at = CASE WHEN is_ban IS NOT NULL THEN COALESCE(is_ban_updated_at, updated_at) END,
-    is_registered_updated_at = CASE WHEN is_registered IS NOT NULL THEN COALESCE(is_registered_updated_at, updated_at) END,
-    chat_not_found_updated_at = CASE WHEN chat_not_found IS NOT NULL THEN COALESCE(chat_not_found_updated_at, updated_at) END,
-    is_in_eurobot_updated_at = CASE WHEN is_in_eurobot IS NOT NULL THEN COALESCE(is_in_eurobot_updated_at, updated_at) END,
-    is_in_hilfen_bot_updated_at = CASE WHEN is_in_hilfen_bot IS NOT NULL THEN COALESCE(is_in_hilfen_bot_updated_at, updated_at) END,
-    score_updated_at = CASE WHEN score IS NOT NULL THEN COALESCE(score_updated_at, updated_at) END,
-    ban_time_updated_at = CASE WHEN ban_time IS NOT NULL THEN COALESCE(ban_time_updated_at, updated_at) END,
-    join_date_updated_at = CASE WHEN join_date IS NOT NULL THEN COALESCE(join_date_updated_at, updated_at) END,
-    profile_path_updated_at = CASE WHEN profile_path IS NOT NULL THEN COALESCE(profile_path_updated_at, updated_at) END,
-    telegram_message_id_updated_at = CASE WHEN telegram_message_id IS NOT NULL THEN COALESCE(telegram_message_id_updated_at, updated_at) END,
-    group_message_id_updated_at = CASE WHEN group_message_id IS NOT NULL THEN COALESCE(group_message_id_updated_at, updated_at) END,
-    public_message_id_updated_at = CASE WHEN public_message_id IS NOT NULL THEN COALESCE(public_message_id_updated_at, updated_at) END,
-    public_group_message_id_updated_at = CASE WHEN public_group_message_id IS NOT NULL THEN COALESCE(public_group_message_id_updated_at, updated_at) END,
-    hilfen_id_updated_at = CASE WHEN hilfen_id IS NOT NULL THEN COALESCE(hilfen_id_updated_at, updated_at) END,
-    hilfen_status_updated_at = CASE WHEN hilfen_status IS NOT NULL THEN COALESCE(hilfen_status_updated_at, updated_at) END,
-    hilfen_date_join_updated_at = CASE WHEN hilfen_date_join IS NOT NULL THEN COALESCE(hilfen_date_join_updated_at, updated_at) END,
-    hilfen_command_updated_at = CASE WHEN hilfen_command IS NOT NULL THEN COALESCE(hilfen_command_updated_at, updated_at) END,
-    hilfen_data_updated_at = CASE WHEN hilfen_data IS NOT NULL THEN COALESCE(hilfen_data_updated_at, updated_at) END,
-    hilfen_id_card_photo_updated_at = CASE WHEN hilfen_id_card_photo IS NOT NULL THEN COALESCE(hilfen_id_card_photo_updated_at, updated_at) END,
-    hilfen_all_projects_updated_at = CASE WHEN hilfen_all_projects IS NOT NULL THEN COALESCE(hilfen_all_projects_updated_at, updated_at) END,
-    hilfen_all_projects_done_updated_at = CASE WHEN hilfen_all_projects_done IS NOT NULL THEN COALESCE(hilfen_all_projects_done_updated_at, updated_at) END,
-    hilfen_limits_time_updated_at = CASE WHEN hilfen_limits_time IS NOT NULL THEN COALESCE(hilfen_limits_time_updated_at, updated_at) END,
-    hilfen_message_id_updated_at = CASE WHEN hilfen_message_id IS NOT NULL THEN COALESCE(hilfen_message_id_updated_at, updated_at) END,
-    hilfen_group_message_id_updated_at = CASE WHEN hilfen_group_message_id IS NOT NULL THEN COALESCE(hilfen_group_message_id_updated_at, updated_at) END;
+    counter_updated_at = COALESCE(counter_updated_at, updated_at),
+    user_id_updated_at = COALESCE(user_id_updated_at, updated_at),
+    accounting_code_updated_at = COALESCE(accounting_code_updated_at, updated_at),
+    username_updated_at = COALESCE(username_updated_at, updated_at),
+    first_name_updated_at = COALESCE(first_name_updated_at, updated_at),
+    last_name_updated_at = COALESCE(last_name_updated_at, updated_at),
+    nickname_updated_at = COALESCE(nickname_updated_at, updated_at),
+    phone_number_updated_at = COALESCE(phone_number_updated_at, updated_at),
+    whatsapp_number_updated_at = COALESCE(whatsapp_number_updated_at, updated_at),
+    country_updated_at = COALESCE(country_updated_at, updated_at),
+    password_updated_at = COALESCE(password_updated_at, updated_at),
+    mode_updated_at = COALESCE(mode_updated_at, updated_at),
+    is_ban_updated_at = COALESCE(is_ban_updated_at, updated_at),
+    is_registered_updated_at = COALESCE(is_registered_updated_at, updated_at),
+    chat_not_found_updated_at = COALESCE(chat_not_found_updated_at, updated_at),
+    is_in_eurobot_updated_at = COALESCE(is_in_eurobot_updated_at, updated_at),
+    is_in_hilfen_bot_updated_at = COALESCE(is_in_hilfen_bot_updated_at, updated_at),
+    score_updated_at = COALESCE(score_updated_at, updated_at),
+    ban_time_updated_at = COALESCE(ban_time_updated_at, updated_at),
+    join_date_updated_at = COALESCE(join_date_updated_at, updated_at),
+    profile_path_updated_at = COALESCE(profile_path_updated_at, updated_at),
+    telegram_message_id_updated_at = COALESCE(telegram_message_id_updated_at, updated_at),
+    group_message_id_updated_at = COALESCE(group_message_id_updated_at, updated_at),
+    public_message_id_updated_at = COALESCE(public_message_id_updated_at, updated_at),
+    public_group_message_id_updated_at = COALESCE(public_group_message_id_updated_at, updated_at),
+    hilfen_id_updated_at = COALESCE(hilfen_id_updated_at, updated_at),
+    hilfen_status_updated_at = COALESCE(hilfen_status_updated_at, updated_at),
+    hilfen_date_join_updated_at = COALESCE(hilfen_date_join_updated_at, updated_at),
+    hilfen_command_updated_at = COALESCE(hilfen_command_updated_at, updated_at),
+    hilfen_data_updated_at = COALESCE(hilfen_data_updated_at, updated_at),
+    hilfen_id_card_photo_updated_at = COALESCE(hilfen_id_card_photo_updated_at, updated_at),
+    hilfen_all_projects_updated_at = COALESCE(hilfen_all_projects_updated_at, updated_at),
+    hilfen_all_projects_done_updated_at = COALESCE(hilfen_all_projects_done_updated_at, updated_at),
+    hilfen_limits_time_updated_at = COALESCE(hilfen_limits_time_updated_at, updated_at),
+    hilfen_message_id_updated_at = COALESCE(hilfen_message_id_updated_at, updated_at),
+    hilfen_group_message_id_updated_at = COALESCE(hilfen_group_message_id_updated_at, updated_at);
 
 ALTER TABLE public.users_eurobot ENABLE TRIGGER USER;
 
@@ -96,42 +97,42 @@ DECLARE
     changed_at timestamptz := now();
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        NEW.counter_updated_at := CASE WHEN NEW.counter IS NOT NULL THEN changed_at END;
-        NEW.user_id_updated_at := CASE WHEN NEW.user_id IS NOT NULL THEN changed_at END;
-        NEW.accounting_code_updated_at := CASE WHEN NEW.accounting_code IS NOT NULL THEN changed_at END;
-        NEW.username_updated_at := CASE WHEN NEW.username IS NOT NULL THEN changed_at END;
-        NEW.first_name_updated_at := CASE WHEN NEW.first_name IS NOT NULL THEN changed_at END;
-        NEW.last_name_updated_at := CASE WHEN NEW.last_name IS NOT NULL THEN changed_at END;
-        NEW.nickname_updated_at := CASE WHEN NEW.nickname IS NOT NULL THEN changed_at END;
-        NEW.phone_number_updated_at := CASE WHEN NEW.phone_number IS NOT NULL THEN changed_at END;
-        NEW.whatsapp_number_updated_at := CASE WHEN NEW.whatsapp_number IS NOT NULL THEN changed_at END;
-        NEW.country_updated_at := CASE WHEN NEW.country IS NOT NULL THEN changed_at END;
-        NEW.password_updated_at := CASE WHEN NEW.password IS NOT NULL THEN changed_at END;
-        NEW.mode_updated_at := CASE WHEN NEW.mode IS NOT NULL THEN changed_at END;
-        NEW.is_ban_updated_at := CASE WHEN NEW.is_ban IS NOT NULL THEN changed_at END;
-        NEW.is_registered_updated_at := CASE WHEN NEW.is_registered IS NOT NULL THEN changed_at END;
-        NEW.chat_not_found_updated_at := CASE WHEN NEW.chat_not_found IS NOT NULL THEN changed_at END;
-        NEW.is_in_eurobot_updated_at := CASE WHEN NEW.is_in_eurobot IS NOT NULL THEN changed_at END;
-        NEW.is_in_hilfen_bot_updated_at := CASE WHEN NEW.is_in_hilfen_bot IS NOT NULL THEN changed_at END;
-        NEW.score_updated_at := CASE WHEN NEW.score IS NOT NULL THEN changed_at END;
-        NEW.ban_time_updated_at := CASE WHEN NEW.ban_time IS NOT NULL THEN changed_at END;
-        NEW.join_date_updated_at := CASE WHEN NEW.join_date IS NOT NULL THEN changed_at END;
-        NEW.profile_path_updated_at := CASE WHEN NEW.profile_path IS NOT NULL THEN changed_at END;
-        NEW.telegram_message_id_updated_at := CASE WHEN NEW.telegram_message_id IS NOT NULL THEN changed_at END;
-        NEW.group_message_id_updated_at := CASE WHEN NEW.group_message_id IS NOT NULL THEN changed_at END;
-        NEW.public_message_id_updated_at := CASE WHEN NEW.public_message_id IS NOT NULL THEN changed_at END;
-        NEW.public_group_message_id_updated_at := CASE WHEN NEW.public_group_message_id IS NOT NULL THEN changed_at END;
-        NEW.hilfen_id_updated_at := CASE WHEN NEW.hilfen_id IS NOT NULL THEN changed_at END;
-        NEW.hilfen_status_updated_at := CASE WHEN NEW.hilfen_status IS NOT NULL THEN changed_at END;
-        NEW.hilfen_date_join_updated_at := CASE WHEN NEW.hilfen_date_join IS NOT NULL THEN changed_at END;
-        NEW.hilfen_command_updated_at := CASE WHEN NEW.hilfen_command IS NOT NULL THEN changed_at END;
-        NEW.hilfen_data_updated_at := CASE WHEN NEW.hilfen_data IS NOT NULL THEN changed_at END;
-        NEW.hilfen_id_card_photo_updated_at := CASE WHEN NEW.hilfen_id_card_photo IS NOT NULL THEN changed_at END;
-        NEW.hilfen_all_projects_updated_at := CASE WHEN NEW.hilfen_all_projects IS NOT NULL THEN changed_at END;
-        NEW.hilfen_all_projects_done_updated_at := CASE WHEN NEW.hilfen_all_projects_done IS NOT NULL THEN changed_at END;
-        NEW.hilfen_limits_time_updated_at := CASE WHEN NEW.hilfen_limits_time IS NOT NULL THEN changed_at END;
-        NEW.hilfen_message_id_updated_at := CASE WHEN NEW.hilfen_message_id IS NOT NULL THEN changed_at END;
-        NEW.hilfen_group_message_id_updated_at := CASE WHEN NEW.hilfen_group_message_id IS NOT NULL THEN changed_at END;
+        NEW.counter_updated_at := changed_at;
+        NEW.user_id_updated_at := changed_at;
+        NEW.accounting_code_updated_at := changed_at;
+        NEW.username_updated_at := changed_at;
+        NEW.first_name_updated_at := changed_at;
+        NEW.last_name_updated_at := changed_at;
+        NEW.nickname_updated_at := changed_at;
+        NEW.phone_number_updated_at := changed_at;
+        NEW.whatsapp_number_updated_at := changed_at;
+        NEW.country_updated_at := changed_at;
+        NEW.password_updated_at := changed_at;
+        NEW.mode_updated_at := changed_at;
+        NEW.is_ban_updated_at := changed_at;
+        NEW.is_registered_updated_at := changed_at;
+        NEW.chat_not_found_updated_at := changed_at;
+        NEW.is_in_eurobot_updated_at := changed_at;
+        NEW.is_in_hilfen_bot_updated_at := changed_at;
+        NEW.score_updated_at := changed_at;
+        NEW.ban_time_updated_at := changed_at;
+        NEW.join_date_updated_at := changed_at;
+        NEW.profile_path_updated_at := changed_at;
+        NEW.telegram_message_id_updated_at := changed_at;
+        NEW.group_message_id_updated_at := changed_at;
+        NEW.public_message_id_updated_at := changed_at;
+        NEW.public_group_message_id_updated_at := changed_at;
+        NEW.hilfen_id_updated_at := changed_at;
+        NEW.hilfen_status_updated_at := changed_at;
+        NEW.hilfen_date_join_updated_at := changed_at;
+        NEW.hilfen_command_updated_at := changed_at;
+        NEW.hilfen_data_updated_at := changed_at;
+        NEW.hilfen_id_card_photo_updated_at := changed_at;
+        NEW.hilfen_all_projects_updated_at := changed_at;
+        NEW.hilfen_all_projects_done_updated_at := changed_at;
+        NEW.hilfen_limits_time_updated_at := changed_at;
+        NEW.hilfen_message_id_updated_at := changed_at;
+        NEW.hilfen_group_message_id_updated_at := changed_at;
         RETURN NEW;
     END IF;
 
