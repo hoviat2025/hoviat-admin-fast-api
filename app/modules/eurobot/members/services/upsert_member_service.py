@@ -7,6 +7,7 @@ from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRe
 from app.shared.repositories.user_base import UserBaseRepository
 from app.shared.repositories.job_queue import JobQueueRepository
 from app.core.exceptions import ServiceError
+from app.shared.user_update_policy import omit_protected_nulls
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class UpsertMemberService:
 
     async def execute(self, payload: BotInsertMemberRequest) -> User:
         # 1. Prepare Data
-        upsert_data = payload.model_dump(exclude_unset=True)
+        upsert_data = omit_protected_nulls(payload.model_dump(exclude_unset=True))
         
         # Business Rule: Reset chat_not_found & Set Eurobot presence flag
         upsert_data["chat_not_found"] = False

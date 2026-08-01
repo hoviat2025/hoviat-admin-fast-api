@@ -2,6 +2,46 @@ from sqlalchemy import Column, Integer, String, Boolean, BigInteger, TIMESTAMP, 
 from sqlalchemy.sql import func
 from app.models.base import Base  
 
+
+FIELD_TIMESTAMP_FIELDS = (
+    "counter",
+    "user_id",
+    "accounting_code",
+    "username",
+    "first_name",
+    "last_name",
+    "nickname",
+    "phone_number",
+    "whatsapp_number",
+    "country",
+    "password",
+    "mode",
+    "is_ban",
+    "is_registered",
+    "chat_not_found",
+    "is_in_eurobot",
+    "is_in_hilfen_bot",
+    "score",
+    "ban_time",
+    "join_date",
+    "profile_path",
+    "telegram_message_id",
+    "group_message_id",
+    "public_message_id",
+    "public_group_message_id",
+    "hilfen_id",
+    "hilfen_status",
+    "hilfen_date_join",
+    "hilfen_command",
+    "hilfen_data",
+    "hilfen_id_card_photo",
+    "hilfen_all_projects",
+    "hilfen_all_projects_done",
+    "hilfen_limits_time",
+    "hilfen_message_id",
+    "hilfen_group_message_id",
+)
+
 class User(Base):
     __tablename__ = "users_eurobot"
 
@@ -68,3 +108,51 @@ class User(Base):
     # Timestamps
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     channel_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    # Per-field modification timestamps. PostgreSQL owns these values; API
+    # clients may read them but cannot supply them in write requests.
+    counter_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    user_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    accounting_code_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    username_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    first_name_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_name_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    nickname_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    phone_number_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    whatsapp_number_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    country_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    password_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    mode_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_ban_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_registered_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    chat_not_found_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_in_eurobot_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_in_hilfen_bot_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    score_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    ban_time_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    join_date_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    profile_path_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    telegram_message_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    group_message_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    public_message_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    public_group_message_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_status_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_date_join_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_command_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_data_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_id_card_photo_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_all_projects_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_all_projects_done_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_limits_time_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_message_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    hilfen_group_message_id_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
+    @property
+    def field_updated_at(self) -> dict:
+        """Expose per-field timestamps as one stable API metadata object."""
+
+        return {
+            field: getattr(self, f"{field}_updated_at")
+            for field in FIELD_TIMESTAMP_FIELDS
+        }

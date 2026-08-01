@@ -1,4 +1,6 @@
 from pydantic import BaseModel
+from datetime import datetime
+from typing import Dict, Optional
 from app.models.user import User
 
 class HilfenUserResponse(BaseModel):
@@ -15,6 +17,9 @@ class HilfenUserResponse(BaseModel):
     date_join: str
     command: str
     data: str
+    updated_at: datetime
+    channel_updated_at: Optional[datetime] = None
+    field_updated_at: Dict[str, Optional[datetime]]
 
     class Config:
         from_attributes = True
@@ -43,4 +48,7 @@ class HilfenUserResponse(BaseModel):
             date_join=str(user.hilfen_date_join or ""),
             command=user.hilfen_command or "none",
             data=user.hilfen_data or "[]",
+            updated_at=user.updated_at,
+            channel_updated_at=user.channel_updated_at,
+            field_updated_at=user.field_updated_at,
         )

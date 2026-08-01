@@ -7,20 +7,11 @@ from app.shared.repositories.job_queue import JobQueueRepository
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
 from app.modules.hilfen.members.schemas.request import HilfenInsertMemberRequest
+from app.shared.user_update_policy import omit_protected_nulls
 
 logger = logging.getLogger(__name__)
 
 class UpsertHilfenMemberService:
-    # Key profile fields protected from being wiped out by empty/null values
-    PROTECTED_FIELDS = {
-        "phone_number",
-        "first_name",
-        "last_name",
-        "country",
-        "username",
-        "nickname"
-    }
-
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = UserBaseRepository(db)
@@ -42,9 +33,8 @@ class UpsertHilfenMemberService:
 
     def _merge_fields(self, user_obj: User, update_data: dict) -> None:
         """
-        Updates database object attributes in place. Restricts overwrite permissions 
-        on critical profile columns if incoming properties are blank or empty strings.
-        Excludes primary key mutation.
+        Updates database object attributes in place after the shared bot policy has
+        removed protected null assignments. Excludes primary key mutation.
         """
         for key, incoming_value in update_data.items():
             # Skip primary key modification on updates
@@ -54,11 +44,7 @@ class UpsertHilfenMemberService:
             if not hasattr(user_obj, key):
                 continue
 
-            if key in self.PROTECTED_FIELDS:
-                if incoming_value not in (None, ""):
-                    setattr(user_obj, key, incoming_value)
-            else:
-                setattr(user_obj, key, incoming_value)
+            setattr(user_obj, key, incoming_value)
 
     async def _trigger_channel_update(self, user_id: int) -> None:
         """Enqueues a medium-priority background sync task for the Hilfen bot."""
@@ -74,7 +60,7 @@ class UpsertHilfenMemberService:
         If a concurrency constraint fails, it rolls back, re-reads the database, and merges.
         After a successful commit, it triggers the Telegram channel posting pipeline.
         """
-        db_data = payload.to_db_dict()
+        db_data = omit_protected_nulls(payload.to_db_dict())
         user_id = db_data["user_id"]
 
         if user_id is None:

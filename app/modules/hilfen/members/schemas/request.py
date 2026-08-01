@@ -58,6 +58,25 @@ class HilfenInsertMemberRequest(BaseModel):
         Translates legacy Hilfen fields for partial updates.
         Reuses to_db_dict() translation logic but excludes unset fields and primary key.
         """
-        raw = self.model_dump(exclude_unset=True, exclude={"user_id"})
         full = self.to_db_dict()
-        return {k: v for k, v in full.items() if k in raw and k != "counter"}
+        legacy_to_db_fields = {
+            "id": ("hilfen_id",),
+            "phonenumber": ("phone_number",),
+            "idcart_photo": ("hilfen_id_card_photo",),
+            "all_projects": ("hilfen_all_projects",),
+            "all_projects_done": ("hilfen_all_projects_done",),
+            "limits_time": ("hilfen_limits_time",),
+            "name": ("first_name", "last_name"),
+            "country": ("country",),
+            "status": ("hilfen_status",),
+            "date_join": ("hilfen_date_join",),
+            "command": ("hilfen_command",),
+            "data": ("hilfen_data",),
+        }
+
+        update_data = {}
+        for legacy_field in self.model_fields_set - {"user_id"}:
+            for db_field in legacy_to_db_fields.get(legacy_field, ()):
+                update_data[db_field] = full[db_field]
+
+        return update_data

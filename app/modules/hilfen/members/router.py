@@ -55,7 +55,7 @@ async def member_by_message(
     """
     service = GetMemberByHilfenMessageService(db)
     user = await service.execute(hilfen_message_id)
-    return StandardResponse.success(data=user)
+    return StandardResponse.success(data=HilfenUserResponse.from_db_model(user))
 
 @router.post("/insert_member", response_model=StandardResponse[HilfenUserResponse])
 async def insert_member(

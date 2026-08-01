@@ -6,6 +6,7 @@ from app.shared.repositories.job_queue import JobQueueRepository
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
 from app.modules.hilfen.members.schemas.request import HilfenInsertMemberRequest
+from app.shared.user_update_policy import omit_protected_nulls
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +19,7 @@ class UpdateHilfenMemberService:
 
     async def execute(self, payload: HilfenInsertMemberRequest) -> User:
         # 1. Business Logic: Prepare Data
-        update_data = payload.to_update_dict()
-
-        if not update_data:
-            raise ServiceError(code="INVALID_INPUT", message="No fields provided for update", status_code=422)
+        update_data = omit_protected_nulls(payload.to_update_dict())
 
         # Set Hilfen presence flag upon active profile update
         update_data["is_in_hilfen_bot"] = True

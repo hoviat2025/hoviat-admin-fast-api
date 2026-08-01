@@ -21,15 +21,15 @@ class BotInsertMemberRequest(BaseModel):
     # Status & Auth
     password: Optional[str] = None
     mode: Optional[str] = None
-    is_ban: bool = False
-    is_registered: bool = False
+    is_ban: Optional[bool] = False
+    is_registered: Optional[bool] = False
     
     # Numbers/Dates 
     # CRITICAL FIX: Use 'int' strictly. 
     # This ensures Pydantic converts string inputs like "0" to integer 0 
     # BEFORE sending them to the database driver.
-    score: int = 0
-    ban_time: int = 0 
+    score: Optional[int] = 0
+    ban_time: Optional[int] = 0
     join_date: Optional[int] = None
 
     # extra='ignore' ensures any other fields sent in the JSON are discarded
