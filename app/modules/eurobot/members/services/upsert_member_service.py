@@ -32,8 +32,8 @@ class UpsertMemberService:
         # 1. Prepare Data
         upsert_data = omit_protected_nulls(payload.model_dump(exclude_unset=True))
         
-        # Business Rule: Reset chat_not_found & Set Eurobot presence flag
-        upsert_data["chat_not_found"] = False
+        # Channel synchronization is the sole owner of chat_not_found. An
+        # ordinary bot upsert must preserve the last getChat result.
         upsert_data["is_in_eurobot"] = True
 
         try:

@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timezone
 
 def format_unix_date(timestamp):
@@ -32,8 +31,6 @@ def create_telegram_message(data):
     phone = f"+{phone_raw}" if phone_raw else ""
     
     user_id = data.get("user_id") or ""
-    command = "add_user"
-
     # Complex Logic
     # Handle boolean truthiness similar to JS
     register_status_val = "رجیستر شده" if data.get("is_registered") else "رجیستر نشده"
@@ -110,15 +107,14 @@ def create_telegram_message(data):
         "ban_time":        f"تاریخ بن شدن : {ban_date_val}",
         "chat_not_found":  f"چت یافت نشد : {chat_not_found_val}",
         "new_user_alert":  "❗️مشتری جدید",
-        "stars":           f"ستاره ها : « {stars_string} »",
-        "footer_code":     f"$%^{user_id}^$%{command}"
+        "stars":           f"ستاره ها : « {stars_string} »"
     }
 
     hilfen_component_keys = []
     if is_in_hilfen_bot:
         components.update({
-            "hilfen_id": f"آیدی هیلفن : {data.get('hilfen_id') or 'نامشخص'}",
-            "hilfen_status": f"وضعیت هیلفن : {hilfen_status_val}",
+            "hilfen_id": f"آیدی در هیلفن : {data.get('hilfen_id') or 'نامشخص'}",
+            "hilfen_status": f"وضعیت در هیلفن : {hilfen_status_val}",
             "hilfen_date_join": f"تاریخ عضویت در هیلفن : {hilfen_join_date_val}",
             "hilfen_projects": (
                 f"پروژه‌های هیلفن : {hilfen_all_projects} کل، "
@@ -134,19 +130,12 @@ def create_telegram_message(data):
             "hilfen_limits_time",
         ]
 
-    membership_and_hilfen_lines = [
-        components["is_in_eurobot"],
-        components["is_in_hilfen_bot"],
-        *(components[key] for key in hilfen_component_keys),
-    ]
-    membership_and_hilfen_section = "\n".join(membership_and_hilfen_lines)
+    hilfen_details_section = "\n".join(
+        components[key] for key in hilfen_component_keys
+    )
 
     # --- 3. Construct the Full Message ---
-    # Current time in milliseconds (JS Date.now())
-    current_time_ms = int(time.time() * 1000)
-
-    full_message = f"""{components['is_registered']}
-{components['first_name']}
+    full_message = f"""{components['first_name']}
 {components['last_name']}
 {components['username']}
 {components['telegram_name']}
@@ -154,18 +143,23 @@ def create_telegram_message(data):
 {components['phone_number']}
 {components['join_date']}
 {components['whatsapp_number']}
+
 {components['score']}
 {components['user_id']}
 {components['password']}
 {components['accounting_code']}
-{membership_and_hilfen_section}
+{components['is_registered']}
 {components['is_ban']}
 {components['ban_time']}
 {components['chat_not_found']}
 {components['new_user_alert']}
 {components['stars']}
-{components['footer_code']}
-{current_time_ms}"""
+{components['is_in_eurobot']}
+
+
+{components['is_in_hilfen_bot']}
+
+{hilfen_details_section}"""
 
     # Return Result
     return {

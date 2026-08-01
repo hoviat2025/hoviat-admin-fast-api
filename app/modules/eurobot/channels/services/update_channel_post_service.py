@@ -78,6 +78,12 @@ class UpdateChannelPostService:
 
             # Retrieve profile photo using the correct bot instance matching the source
             picture_file, image_path, chat_not_found = await self._process_profile_image(user_id, update_source)
+
+            # Persist and refresh the getChat result before formatting so the new
+            # channel caption contains the value that was actually determined.
+            await self._update_profile_fields(user_id, image_path, chat_not_found)
+            await self.db.flush()
+            user = await self._get_user_or_404(user_id)
             formatted_text = self._main_channel_formatter_local(user)
 
             # Post the main channel message
@@ -89,8 +95,7 @@ class UpdateChannelPostService:
             sent_main = True
             main_changed = True
             
-            # Save profile properties before sending sub-channel replies
-            await self._update_profile_fields(user_id, image_path, chat_not_found)
+            # Commit profile properties before sending sub-channel replies.
             await self.db.commit()
 
         # ==========================================

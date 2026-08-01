@@ -35,8 +35,8 @@ class InsertHilfenMemberService:
         # 1. Prepare Data
         insert_data = payload.to_db_dict()
 
-        # Business Rule: Explicitly set chat_not_found to False & set Hilfen presence
-        insert_data["chat_not_found"] = False
+        # chat_not_found starts from the model/database default and is then
+        # determined by the channel synchronization getChat request.
         insert_data["is_in_hilfen_bot"] = True
 
         try:

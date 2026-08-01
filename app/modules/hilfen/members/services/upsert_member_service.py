@@ -87,7 +87,6 @@ class UpsertHilfenMemberService:
 
         # 2. Attempt Create Route (Assumed new user)
         try:
-            db_data["chat_not_found"] = False
             user = await self.repo.create(db_data)
             await self.db.commit()
             await self.db.refresh(user)
