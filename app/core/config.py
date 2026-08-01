@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # --- Telegram Integration ---
     # API tokens for various bot instances
     BOT_API_TOKEN: str
+    HILFEN_API_TOKEN: str
     SENDER_BOT_TOKEN: str
     EURO_BOT_TOKEN: str
     HILFEN_BOT_TOKEN: str
