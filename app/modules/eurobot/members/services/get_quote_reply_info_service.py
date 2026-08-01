@@ -125,7 +125,12 @@ class GetQuoteReplyInfoService:
             "public_group_id": getattr(settings, "PUBLIC_GROUP_ID", None),
             
             "public_message_id": user.public_message_id,
-            "public_channel_id": getattr(settings, "PUBLIC_CHANNEL_ID", None)
+            "public_channel_id": getattr(settings, "PUBLIC_CHANNEL_ID", None),
+
+            "hilfen_message_id": user.hilfen_message_id,
+            "hilfen_group_message_id": user.hilfen_group_message_id,
+            "hilfen_channel_id": getattr(settings, "HILFEN_CHANNEL_ID", None),
+            "hilfen_group_id": getattr(settings, "HILFEN_GROUP_ID", None),
         })
 
         logger.info(f"GetQuoteReplyInfoService completed successfully for user_id: {user_id}")

@@ -114,18 +114,21 @@ def create_telegram_message(data):
         "footer_code":     f"$%^{user_id}^$%{command}"
     }
 
+    # Quote-reply responses use these components directly, so expose every
+    # Hilfen field consistently even when this particular user is not in Hilfen.
+    components.update({
+        "hilfen_id": f"آیدی در هیلفن : {data.get('hilfen_id') or 'نامشخص'}",
+        "hilfen_status": f"وضعیت در هیلفن : {hilfen_status_val}",
+        "hilfen_date_join": f"تاریخ عضویت در هیلفن : {hilfen_join_date_val}",
+        "hilfen_projects": (
+            f"پروژه‌های هیلفن : {hilfen_all_projects} کل، "
+            f"{hilfen_all_projects_done} تکمیل شده"
+        ),
+        "hilfen_limits_time": f"تاریخ محدودیت در هیلفن : {hilfen_limits_time_val}",
+    })
+
     hilfen_component_keys = []
     if is_in_hilfen_bot:
-        components.update({
-            "hilfen_id": f"آیدی در هیلفن : {data.get('hilfen_id') or 'نامشخص'}",
-            "hilfen_status": f"وضعیت در هیلفن : {hilfen_status_val}",
-            "hilfen_date_join": f"تاریخ عضویت در هیلفن : {hilfen_join_date_val}",
-            "hilfen_projects": (
-                f"پروژه‌های هیلفن : {hilfen_all_projects} کل، "
-                f"{hilfen_all_projects_done} تکمیل شده"
-            ),
-            "hilfen_limits_time": f"تاریخ محدودیت در هیلفن : {hilfen_limits_time_val}",
-        })
         hilfen_component_keys = [
             "hilfen_id",
             "hilfen_status",
