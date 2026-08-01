@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 
 def format_unix_date(timestamp):
@@ -31,6 +32,8 @@ def create_telegram_message(data):
     phone = f"+{phone_raw}" if phone_raw else ""
     
     user_id = data.get("user_id") or ""
+    command = "add_user"
+
     # Complex Logic
     # Handle boolean truthiness similar to JS
     register_status_val = "رجیستر شده" if data.get("is_registered") else "رجیستر نشده"
@@ -107,7 +110,8 @@ def create_telegram_message(data):
         "ban_time":        f"تاریخ بن شدن : {ban_date_val}",
         "chat_not_found":  f"چت یافت نشد : {chat_not_found_val}",
         "new_user_alert":  "❗️مشتری جدید",
-        "stars":           f"ستاره ها : « {stars_string} »"
+        "stars":           f"ستاره ها : « {stars_string} »",
+        "footer_code":     f"$%^{user_id}^$%{command}"
     }
 
     hilfen_component_keys = []
@@ -135,6 +139,8 @@ def create_telegram_message(data):
     )
 
     # --- 3. Construct the Full Message ---
+    current_time_ms = int(time.time() * 1000)
+
     full_message = f"""{components['first_name']}
 {components['last_name']}
 {components['username']}
@@ -159,7 +165,9 @@ def create_telegram_message(data):
 
 {components['is_in_hilfen_bot']}
 
-{hilfen_details_section}"""
+{hilfen_details_section}
+{components['footer_code']}
+{current_time_ms}"""
 
     # Return Result
     return {
