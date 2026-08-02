@@ -5,11 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from app.models.user import User
 from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
 from app.shared.repositories.user_base import UserBaseRepository
+from app.shared.repositories.job_queue import JobQueueRepository
 from app.core.exceptions import ServiceError
-
-# --- ADDED IMPORTS ---
-from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
+from app.shared.user_update_policy import omit_protected_nulls
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +15,7 @@ class UpsertMemberService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = UserBaseRepository(db)
+        self.queue_repo = JobQueueRepository(db)
 
     def _clean_db_error(self, error_obj: Exception) -> str:
         """Extract user-friendly message from DB error."""
@@ -31,10 +30,11 @@ class UpsertMemberService:
 
     async def execute(self, payload: BotInsertMemberRequest) -> User:
         # 1. Prepare Data
-        upsert_data = payload.model_dump(exclude_unset=True)
+        upsert_data = omit_protected_nulls(payload.model_dump(exclude_unset=True))
         
-        # Business Rule: Reset chat_not_found
-        upsert_data["chat_not_found"] = False
+        # Channel synchronization is the sole owner of chat_not_found. An
+        # ordinary bot upsert must preserve the last getChat result.
+        upsert_data["is_in_eurobot"] = True
 
         try:
             # 2. Call Repo (Upsert)
@@ -48,22 +48,15 @@ class UpsertMemberService:
             # before passing it to the next service.
             await self.db.refresh(user)
 
-            # --- 4. Call Update Channel Service ---
+            # 4. Queue Background Channel Sync (Medium Priority)
             try:
-                pass
-                # update_service = UpdateChannelPostService(self.db)
-                
-                # # Prepare the request using the user_id
-                # update_payload = UpdateChannelPostRequest(user_id=user.user_id)
-                
-                # # Execute the update. 
-                # # This syncs the user with the Telegram channel.
-                # user = await update_service.execute(update_payload)
+                await self.queue_repo.enqueue_medium_priority(user_id=user.user_id, source="eurobot")
+                logger.info(f"Enqueued background sync task (Medium) for user {user.user_id}")
 
             except Exception as e:
-                # Log the error but do NOT rollback the Upsert.
-                # The user data is safe in the DB.
-                logger.error(f"User {user.user_id} upserted, but failed to update channel post: {e}")
+                # Log the error but do NOT rollback or crash the Upsert.
+                # The user data is already committed and safe in the DB.
+                logger.error(f"User {user.user_id} upserted, but failed to queue background sync: {e}")
 
             return user
 

@@ -6,7 +6,7 @@ class UserIdentityResponse(BaseModel):
     # We only include fields relevant to "Identity"
     # We skip "telegram_message_id" because the Admin human doesn't care about that.
     
-    user_id: Optional[int] = None
+    user_id: int
     username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None

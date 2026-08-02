@@ -12,6 +12,9 @@ from app.modules.eurobot.members.schemas.bulk_update_request import (
 from app.modules.eurobot.members.services.update_member_service import UpdateMemberService
 from app.core.exceptions import ServiceError
 
+# Standardized batch size threshold
+BATCH_LIMIT = 20
+
 class BulkUpdateMembersService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -23,11 +26,20 @@ class BulkUpdateMembersService:
         failed = []
 
         for index, user_data in enumerate(payload):
+            # 1. Enforce batch-size cap to protect gateway limits and prevent timeouts
+            if index >= BATCH_LIMIT:
+                failed.append(BulkUpdateFailedItem(
+                    index=index,
+                    code="CONFLICT_OCCURRED",
+                    message=f"Too many requests in a single batch. Only the first {BATCH_LIMIT} are processed. Please retry."
+                ))
+                continue
+
             try:
-                # 1. Execute Single Update (Repo update + Commit happens here)
+                # 2. Execute Single Update (Repo update + Commit happens here)
                 updated_user = await self.single_update_service.execute(user_data)
 
-                # 2. Add to Success List (Convert ORM to Pydantic DTO)
+                # 3. Add to Success List (Convert ORM to Pydantic DTO)
                 successful.append(BulkUpdateSuccessItem(
                     index=index,
                     user_id=user_data.user_id,
@@ -35,7 +47,7 @@ class BulkUpdateMembersService:
                 ))
 
             except ServiceError as e:
-                # 3. Handle Logic Errors (e.g. User Not Found)
+                # 4. Handle Logic Errors (e.g. User Not Found)
                 await self.db.rollback()
                 failed.append(BulkUpdateFailedItem(
                     index=index,
@@ -44,7 +56,7 @@ class BulkUpdateMembersService:
                 ))
 
             except IntegrityError as e:
-                # 4. Handle DB Constraint Errors (e.g. Duplicates)
+                # 5. Handle DB Constraint Errors (e.g. Duplicates)
                 await self.db.rollback()
                 # Try to get clean error message
                 error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
@@ -55,7 +67,7 @@ class BulkUpdateMembersService:
                 ))
 
             except Exception as e:
-                # 5. Handle Unexpected Errors
+                # 6. Handle Unexpected Errors
                 await self.db.rollback()
                 failed.append(BulkUpdateFailedItem(
                     index=index,

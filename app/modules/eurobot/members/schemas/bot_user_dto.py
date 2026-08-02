@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, field_serializer, BeforeValidator
-from typing import Optional, Annotated, Any
+from typing import Optional, Annotated, Any, Dict
 from datetime import datetime
 
 # --- 1. Define a Helper Helper Function ---
@@ -21,7 +21,7 @@ class BotUserResponse(BaseModel):
     
     # --- 3. Apply the Custom Type to the ID/Number fields ---
     user_id: StringifiedInt
-    ban_time: StringifiedInt = "0"
+    ban_time: Optional[StringifiedInt] = None
     join_date: Optional[StringifiedInt] = None
     
     # These fields were already strings or didn't have issues, 
@@ -44,15 +44,16 @@ class BotUserResponse(BaseModel):
     mode: Optional[str] = None
     accounting_code: Optional[str] = None
     
-    is_ban: bool = False
-    is_registered: bool = False
+    is_ban: Optional[bool] = None
+    is_registered: Optional[bool] = None
     chat_not_found: bool = False
 
-    score: int = 0
+    score: Optional[int] = None
     profile_path: Optional[str] = None
 
     updated_at: datetime
     channel_updated_at: Optional[datetime] = None
+    field_updated_at: Dict[str, Optional[datetime]]
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -67,3 +68,14 @@ class BotUserResponse(BaseModel):
             return None
         # Format: 2025-12-07T14:25:01.112Z
         return value.isoformat(timespec='milliseconds').replace("+00:00", "Z")
+
+    @field_serializer('field_updated_at')
+    def serialize_field_datetimes(self, values, _info):
+        return {
+            field: (
+                value.isoformat(timespec='milliseconds').replace("+00:00", "Z")
+                if value is not None
+                else None
+            )
+            for field, value in values.items()
+        }

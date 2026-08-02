@@ -12,17 +12,18 @@ class UserBaseRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def get_fresh_by_id(self, user_id: int) -> User | None:
+    async def get_fresh_by_id(self, user_id: int, session: AsyncSession | None = None) -> User | None:
         """
         Fetches the user directly from the database, bypassing and overwriting 
         the session identity map cache. Use this for polling external state changes.
         """
+        s = session or self.db
         stmt = (
             select(User)
             .where(User.user_id == user_id)
             .execution_options(populate_existing=True)
         )
-        result = await self.db.execute(stmt)
+        result = await s.execute(stmt)
         return result.scalars().first()
 
     async def get_by_telegram_message_id(self, message_id: str) -> User | None:
@@ -32,6 +33,11 @@ class UserBaseRepository:
 
     async def get_by_public_message_id(self, message_id: str) -> User | None:
         stmt = select(User).where(User.public_message_id == message_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_by_hilfen_message_id(self, message_id: int) -> User | None:
+        stmt = select(User).where(User.hilfen_message_id == message_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 

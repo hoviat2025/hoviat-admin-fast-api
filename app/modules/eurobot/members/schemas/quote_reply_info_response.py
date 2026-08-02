@@ -35,6 +35,11 @@ class QuoteReplyInfoResponse(BaseModel):
     public_message_id: Optional[StringifiedInt] = None
     public_channel_id: Optional[StringifiedInt] = None
 
+    hilfen_message_id: Optional[StringifiedInt] = None
+    hilfen_group_message_id: Optional[StringifiedInt] = None
+    hilfen_channel_id: Optional[StringifiedInt] = None
+    hilfen_group_id: Optional[StringifiedInt] = None
+
     model_config = ConfigDict(
         # 'extra="allow"' is enabled here to support dynamic fields generated 
         # at runtime (e.g., localized strings like "first_name": "نام : بردیا") 

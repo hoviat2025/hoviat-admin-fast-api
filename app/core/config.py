@@ -29,8 +29,10 @@ class Settings(BaseSettings):
     # --- Telegram Integration ---
     # API tokens for various bot instances
     BOT_API_TOKEN: str
+    HILFEN_API_TOKEN: str
     SENDER_BOT_TOKEN: str
     EURO_BOT_TOKEN: str
+    HILFEN_BOT_TOKEN: str
     
     # Base endpoint for Telegram Bot API requests
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"
@@ -47,6 +49,8 @@ class Settings(BaseSettings):
     MAIN_GROUP_ID: str
     PUBLIC_CHANNEL_ID: str 
     PUBLIC_GROUP_ID: str
+    HILFEN_CHANNEL_ID: str 
+    HILFEN_GROUP_ID: str
     
     # Internal service URL for the formatting worker
     FORMATTER_WORKER_URL: str

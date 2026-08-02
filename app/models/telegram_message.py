@@ -9,3 +9,5 @@ class TelegramMessage(Base):
     group_message_id = Column(Integer, nullable=True)
     public_message_id = Column(Integer, nullable=True)
     public_group_message_id = Column(Integer, nullable=True)
+    hilfen_message_id = Column(Integer, nullable=True)
+    hilfen_group_message_id = Column(Integer, nullable=True)

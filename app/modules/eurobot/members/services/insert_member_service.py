@@ -4,15 +4,12 @@ from sqlalchemy.exc import IntegrityError
 
 # Core & Models
 from app.models.user import User
+from app.shared.repositories.job_queue import JobQueueRepository
 from app.shared.repositories.user_base import UserBaseRepository
 from app.core.exceptions import ServiceError
 
 # Schemas
 from app.modules.eurobot.members.schemas.insert_request import BotInsertMemberRequest
-
-# --- ADDED IMPORTS ---
-from app.modules.eurobot.channels.services.update_channel_post_service import UpdateChannelPostService
-from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +17,7 @@ class InsertMemberService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = UserBaseRepository(db)
+        self.queue_repo = JobQueueRepository(db)
 
     def _clean_db_error(self, error_obj: Exception) -> str:
         """Helper to extract user-friendly messages from DB errors."""
@@ -39,37 +37,30 @@ class InsertMemberService:
         # 1. Prepare Data
         insert_data = payload.model_dump(exclude_unset=True)
         
-        # Business Rule: Explicitly set chat_not_found to False
-        insert_data["chat_not_found"] = False
+        # chat_not_found starts from the model/database default and is then
+        # determined by the channel synchronization getChat request.
+        insert_data["is_in_eurobot"] = True
 
         try:
             # 2. Call Repo (Creates the user object in session)
             new_user = await self.repo.create(insert_data)
             
             # 3. Commit Transaction
-            # This saves the user to the DB so the UpdateChannelPostService can access it.
+            # This saves the user to the DB first.
             await self.db.commit()
             
             # Refresh ensures the instance is up-to-date and attached to the session
-            # (useful if the DB triggers updated default timestamps, etc.)
             await self.db.refresh(new_user)
 
-            # --- 4. Call Update Channel Service ---
+            # 4. Queue Background Channel Sync (Medium Priority)
             try:
-                pass
-                # update_service = UpdateChannelPostService(self.db)
-                
-                # # We use new_user.user_id (which you confirmed is the field name)
-                # update_payload = UpdateChannelPostRequest(user_id=new_user.user_id)
-                
-                # # Execute the update. 
-                # # The service returns the updated user object (with sync timestamps), so we update our reference.
-                # new_user = await update_service.execute(update_payload)
+                await self.queue_repo.enqueue_medium_priority(user_id=new_user.user_id, source="eurobot")
+                logger.info(f"Enqueued background sync task (Medium) for newly inserted user {new_user.user_id}")
                 
             except Exception as e:
                 # If the channel update fails, we log it but do NOT rollback the User creation.
                 # The user was successfully created in step 3.
-                logger.error(f"User {new_user.user_id} created, but failed to update channel post: {e}")
+                logger.error(f"User {new_user.user_id} created, but failed to queue background sync: {e}")
                 
             return new_user
 

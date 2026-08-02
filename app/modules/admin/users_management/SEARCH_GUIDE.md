@@ -134,7 +134,7 @@ Must match the value exactly.
 
 user_id (Telegram ID)
 
-counter (Database Primary Key)
+counter (Optional Eurobot-owned counter)
 
 accounting_code
 
@@ -191,8 +191,6 @@ Example: ?min_score=100&joined_after_unix=1700000000
 Use these to find records where a specific field is missing/null in the database.
 Set the value to true to find nulls, false to find non-nulls.
 
-no_user_id
-
 no_accounting_code
 
 no_username
@@ -239,7 +237,7 @@ Prefix with - for Descending (Newest/Highest first).
 
 No prefix for Ascending.
 
-Default: -counter (Newest users first)
+Default: -user_id_updated_at (Newest users first)
 
 Valid Sort Fields: counter, user_id, score, join_date, updated_at, etc.
 

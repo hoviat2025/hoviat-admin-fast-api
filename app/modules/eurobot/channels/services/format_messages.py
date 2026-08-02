@@ -13,7 +13,7 @@ def format_unix_date(timestamp):
         # JS toISOString returns UTC dates, so we use utcfromtimestamp
         dt = datetime.fromtimestamp(int(timestamp), tz=timezone.utc)
         return dt.strftime("%Y/%m/%d")
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError, OSError):
         return None
 
 def create_telegram_message(data):
@@ -51,6 +51,35 @@ def create_telegram_message(data):
 
     chat_not_found_val = "صحیح" if data.get("chat_not_found") else "خیر"
 
+    is_in_eurobot = bool(data.get("is_in_eurobot"))
+    is_in_hilfen_bot = bool(data.get("is_in_hilfen_bot"))
+    eurobot_membership_val = "بله" if is_in_eurobot else "خیر"
+    hilfen_membership_val = "بله" if is_in_hilfen_bot else "خیر"
+
+    hilfen_status_raw = data.get("hilfen_status")
+    hilfen_status_val = {
+        "confirm": "تایید شده",
+        "notconfirm": "تایید نشده",
+    }.get(hilfen_status_raw, str(hilfen_status_raw) if hilfen_status_raw else "نامشخص")
+
+    hilfen_join_date_val = format_unix_date(data.get("hilfen_date_join")) or "نامشخص"
+
+    hilfen_limits_time = data.get("hilfen_limits_time")
+    if not hilfen_limits_time or str(hilfen_limits_time) == "0":
+        hilfen_limits_time_val = "محدود نشده"
+    else:
+        hilfen_limits_time_val = format_unix_date(hilfen_limits_time) or "نامشخص"
+
+    try:
+        hilfen_all_projects = int(data.get("hilfen_all_projects") or 0)
+    except (ValueError, TypeError):
+        hilfen_all_projects = 0
+
+    try:
+        hilfen_all_projects_done = int(data.get("hilfen_all_projects_done") or 0)
+    except (ValueError, TypeError):
+        hilfen_all_projects_done = 0
+
     # Score Logic
     try:
         score_val = int(data.get("score", 0))
@@ -75,6 +104,8 @@ def create_telegram_message(data):
         "user_id":         f"آیدی : {user_id}",
         "password":        f"پسورد : {data.get('password') or ''}",
         "accounting_code": f"کد حسابداری : {data.get('accounting_code') or ''}",
+        "is_in_eurobot":   f"عضویت در یوروبات : {eurobot_membership_val}",
+        "is_in_hilfen_bot": f"عضویت در هیلفن : {hilfen_membership_val}",
         "is_ban":          f"وضعیت بن : {ban_status_val}",
         "ban_time":        f"تاریخ بن شدن : {ban_date_val}",
         "chat_not_found":  f"چت یافت نشد : {chat_not_found_val}",
@@ -83,12 +114,37 @@ def create_telegram_message(data):
         "footer_code":     f"$%^{user_id}^$%{command}"
     }
 
+    # Quote-reply responses use these components directly, so expose every
+    # Hilfen field consistently even when this particular user is not in Hilfen.
+    components.update({
+        "hilfen_id": f"آیدی در هیلفن : {data.get('hilfen_id') or 'نامشخص'}",
+        "hilfen_status": f"وضعیت در هیلفن : {hilfen_status_val}",
+        "hilfen_date_join": f"تاریخ عضویت در هیلفن : {hilfen_join_date_val}",
+        "hilfen_projects": (
+            f"پروژه‌های هیلفن : {hilfen_all_projects} کل، "
+            f"{hilfen_all_projects_done} تکمیل شده"
+        ),
+        "hilfen_limits_time": f"تاریخ محدودیت در هیلفن : {hilfen_limits_time_val}",
+    })
+
+    hilfen_component_keys = []
+    if is_in_hilfen_bot:
+        hilfen_component_keys = [
+            "hilfen_id",
+            "hilfen_status",
+            "hilfen_date_join",
+            "hilfen_projects",
+            "hilfen_limits_time",
+        ]
+
+    hilfen_details_section = "\n".join(
+        components[key] for key in hilfen_component_keys
+    )
+
     # --- 3. Construct the Full Message ---
-    # Current time in milliseconds (JS Date.now())
     current_time_ms = int(time.time() * 1000)
 
-    full_message = f"""{components['is_registered']}
-{components['first_name']}
+    full_message = f"""{components['first_name']}
 {components['last_name']}
 {components['username']}
 {components['telegram_name']}
@@ -96,15 +152,23 @@ def create_telegram_message(data):
 {components['phone_number']}
 {components['join_date']}
 {components['whatsapp_number']}
+
 {components['score']}
 {components['user_id']}
 {components['password']}
 {components['accounting_code']}
+{components['is_registered']}
 {components['is_ban']}
 {components['ban_time']}
 {components['chat_not_found']}
 {components['new_user_alert']}
 {components['stars']}
+{components['is_in_eurobot']}
+
+
+{components['is_in_hilfen_bot']}
+
+{hilfen_details_section}
 {components['footer_code']}
 {current_time_ms}"""
 
