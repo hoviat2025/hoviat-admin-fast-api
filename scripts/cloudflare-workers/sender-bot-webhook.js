@@ -94,6 +94,30 @@ export default {
       return new Response("ok");
     }
 
+
+    // ==================================================================
+    // SCENARIO 3: Hilfen Channel External Reply
+    // Sender: -1002026011030
+    // Origin: -1001129100618
+    // Target Endpoint: set_hilfen_message_id
+    // ==================================================================
+
+    const SENDER_ID_3 = -1002026011030;
+    const ORIGIN_ID_3 = -1001129100618;
+
+    if (senderId === SENDER_ID_3 && originId === ORIGIN_ID_3) {
+      console.log("Scenario 3 Met! Hilfen external reply criteria matched.");
+
+      const apiUrl = "https://185.202.113.95.nip.io/webhook/hoviat/v1/hilfen/set_hilfen_message_id";
+
+      const payload = {
+        original_update: update
+      };
+
+      await sendToApi(env, apiUrl, payload);
+      return new Response("ok");
+    }
+
     // No criteria met
     console.log("Ignored: No matching criteria found");
     return new Response("ok");
