@@ -1,5 +1,5 @@
 // 1. YOUR REAL HOST
-const PRIMARY_HOST = 'hoviat-admin-fast-api.onrender.com';
+const PRIMARY_HOST = '185.202.113.95.nip.io';
 
 // 2. YOUR BACKUP HOST (Commented out)
 // const BACKUP_HOST = 'hoviat-admin-fast-api.onrender.com';
@@ -72,6 +72,8 @@ async function handleRequest(request, event) {
 
   // modify host for primary
   url.hostname = PRIMARY_HOST;
+  url.protocol = 'https:';
+  url.port = '';
   const primaryRequest = new Request(url, request);
 
   try {

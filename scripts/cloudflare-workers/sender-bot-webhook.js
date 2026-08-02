@@ -49,7 +49,7 @@ export default {
         // const apiUrl = "https://hoviat-api-url.safaee1361.workers.dev/webhook/hoviat/v1/eurobot/set_group_message_id";
         
         // NEW DIRECT URL (TEST ENDPOINT)
-        const apiUrl = "https://hoviat-admin-fast-api.onrender.com/webhook/hoviat/v1/eurobot/set_group_message_id_test";
+        const apiUrl = "https://185.202.113.95.nip.io/webhook/hoviat/v1/eurobot/set_group_message_id_test";
         
         const payload = {
           extracted_user_id: extractedUserId,
@@ -83,7 +83,7 @@ export default {
       // const apiUrl = "https://hoviat-api-url.safaee1361.workers.dev/webhook/hoviat/v1/eurobot/set_public_message_id";
 
       // NEW DIRECT URL (TEST ENDPOINT)
-      const apiUrl = "https://hoviat-admin-fast-api.onrender.com/webhook/hoviat/v1/eurobot/set_public_message_id_test";
+      const apiUrl = "https://185.202.113.95.nip.io/webhook/hoviat/v1/eurobot/set_public_message_id_test";
 
       // Payload for Scenario 2
       const payload = {
