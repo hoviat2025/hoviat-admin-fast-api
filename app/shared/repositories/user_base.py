@@ -12,6 +12,16 @@ class UserBaseRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    async def get_by_id_for_update(self, user_id: int) -> User | None:
+        """Fetch and lock one user until the current transaction completes."""
+        stmt = (
+            select(User)
+            .where(User.user_id == user_id)
+            .with_for_update()
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def get_fresh_by_id(self, user_id: int, session: AsyncSession | None = None) -> User | None:
         """
         Fetches the user directly from the database, bypassing and overwriting 

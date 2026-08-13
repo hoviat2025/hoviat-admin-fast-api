@@ -58,6 +58,24 @@ class UserFilter(Filter):
     public_message_id: Optional[str] = None
     public_group_message_id: Optional[str] = None
 
+    # Hilfen-specific fields
+    hilfen_id: Optional[int] = None
+    hilfen_status: Optional[str] = None
+    hilfen_date_join: Optional[int] = None
+    hilfen_command: Optional[str] = None
+    hilfen_all_projects: Optional[int] = None
+    hilfen_all_projects_done: Optional[int] = None
+    hilfen_limits_time: Optional[int] = None
+    hilfen_message_id: Optional[int] = None
+    hilfen_group_message_id: Optional[int] = None
+
+    hilfen_status__ilike: Optional[str] = Field(default=None, alias="hilfen_status_contains")
+    hilfen_command__ilike: Optional[str] = Field(default=None, alias="hilfen_command_contains")
+
+    # Bot membership
+    is_in_eurobot: Optional[bool] = None
+    is_in_hilfen_bot: Optional[bool] = None
+
     # ==========================================
     # 3. BOOLEANS
     # ==========================================
@@ -81,6 +99,16 @@ class UserFilter(Filter):
     # Join Date (Unix Timestamp - BigInteger)
     join_date__gte: Optional[int] = Field(default=None, alias="joined_after_unix")
     join_date__lte: Optional[int] = Field(default=None, alias="joined_before_unix")
+
+    # Hilfen numeric fields
+    hilfen_date_join__gte: Optional[int] = Field(default=None, alias="hilfen_joined_after_unix")
+    hilfen_date_join__lte: Optional[int] = Field(default=None, alias="hilfen_joined_before_unix")
+    hilfen_all_projects__gte: Optional[int] = Field(default=None, alias="min_hilfen_all_projects")
+    hilfen_all_projects__lte: Optional[int] = Field(default=None, alias="max_hilfen_all_projects")
+    hilfen_all_projects_done__gte: Optional[int] = Field(default=None, alias="min_hilfen_projects_done")
+    hilfen_all_projects_done__lte: Optional[int] = Field(default=None, alias="max_hilfen_projects_done")
+    hilfen_limits_time__gte: Optional[int] = Field(default=None, alias="min_hilfen_limits_time")
+    hilfen_limits_time__lte: Optional[int] = Field(default=None, alias="max_hilfen_limits_time")
 
     # DB Timestamps (DateTime objects)
     updated_at__gte: Optional[datetime] = Field(default=None, alias="updated_after")
@@ -115,6 +143,16 @@ class UserFilter(Filter):
     public_message_id__isnull: Optional[bool] = Field(default=None, alias="no_public_msg_id")
     public_group_message_id__isnull: Optional[bool] = Field(default=None, alias="no_public_group_msg_id")
 
+    hilfen_id__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_id")
+    hilfen_status__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_status")
+    hilfen_date_join__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_date_join")
+    hilfen_command__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_command")
+    hilfen_all_projects__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_all_projects")
+    hilfen_all_projects_done__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_all_projects_done")
+    hilfen_limits_time__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_limits_time")
+    hilfen_message_id__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_msg_id")
+    hilfen_group_message_id__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_group_msg_id")
+
     channel_updated_at__isnull: Optional[bool] = Field(default=None, alias="no_channel_update")
 
     # ==========================================
@@ -139,7 +177,9 @@ class UserFilter(Filter):
         "country__ilike", 
         "phone_number__ilike",
         "whatsapp_number__ilike",
-        "profile_path__ilike"
+        "profile_path__ilike",
+        "hilfen_status__ilike",
+        "hilfen_command__ilike"
     )
     def make_partial_match(cls, v: Optional[str]):
         """

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends  # <-- Added Depends for DB injection
 from sqlalchemy.ext.asyncio import AsyncSession  # <-- Added for database type hinting
 from app.core.config import settings
+from app.core.cron_auth import require_cron_secret
 from app.core.exceptions import register_exception_handlers
 from app.core.middleware import register_middleware
 
@@ -108,7 +109,7 @@ async def health_check():  # Added 'async'
     return {"status": "ok", "mode": mode}
 
 # --- UNIVERSAL CRON ENDPOINT ---
-@app.post("/webhook/hoviat/v1/cron-sync")
+@app.post("/webhook/hoviat/v1/cron-sync", dependencies=[Depends(require_cron_secret)])
 async def trigger_cron_sync(db: AsyncSession = Depends(get_db)):
     """
     Exposes a secure POST webhook endpoint to trigger the universal cron sync.

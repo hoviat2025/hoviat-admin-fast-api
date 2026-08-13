@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Dict, Optional
 from datetime import datetime
 
 class FullUserResponse(BaseModel):
@@ -34,6 +34,8 @@ class FullUserResponse(BaseModel):
     is_ban: bool
     is_registered: bool
     chat_not_found: bool
+    is_in_eurobot: bool
+    is_in_hilfen_bot: bool
 
     # Numbers
     score: int
@@ -47,9 +49,23 @@ class FullUserResponse(BaseModel):
     public_message_id: Optional[str] = None
     public_group_message_id: Optional[str] = None
 
+    # Hilfen-specific fields
+    hilfen_id: Optional[int] = None
+    hilfen_status: Optional[str] = None
+    hilfen_date_join: Optional[int] = None
+    hilfen_command: Optional[str] = None
+    hilfen_data: Optional[str] = None
+    hilfen_id_card_photo: Optional[str] = None
+    hilfen_all_projects: Optional[int] = None
+    hilfen_all_projects_done: Optional[int] = None
+    hilfen_limits_time: Optional[int] = None
+    hilfen_message_id: Optional[int] = None
+    hilfen_group_message_id: Optional[int] = None
+
     # Timestamps
     updated_at: datetime
     channel_updated_at: Optional[datetime] = None
+    field_updated_at: Dict[str, Optional[datetime]]
 
     class Config:
         from_attributes = True # Maps SQLAlchemy model -> Pydantic

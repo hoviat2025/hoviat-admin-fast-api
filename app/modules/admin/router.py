@@ -4,6 +4,7 @@ from app.modules.admin.dependencies import get_current_admin
 # Import Sub-Routers
 from app.modules.admin.users_management.router import router as users_management_router
 from app.modules.admin.auth.router import router as auth_router
+from app.modules.admin.audit.router import router as audit_router
 
 # The Main Admin Router
 router = APIRouter()
@@ -18,4 +19,11 @@ router.include_router(
     prefix="/users-management", 
     tags=["Admin Users Management"],
     dependencies=[Depends(get_current_admin)] 
+)
+
+router.include_router(
+    audit_router,
+    prefix="/audit-logs",
+    tags=["Admin Audit Logs"],
+    dependencies=[Depends(get_current_admin)],
 )

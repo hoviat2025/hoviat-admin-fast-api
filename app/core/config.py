@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     
     # Secret key used for cryptographic signing and security hashes
     SECRET_KEY: str
+
+    # Secret required by the internal server scheduler when triggering cron sync.
+    # Keep this separate from JWT, admin, and bot credentials.
+    CRON_SYNC_SECRET: str
     
     # --- Authentication & JWT Settings ---
     # Token expiration time (defaulting to 10080 minutes / 7 days)

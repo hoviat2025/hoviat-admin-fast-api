@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi_filter import FilterDepends
 
 # Import StandardResponse
@@ -13,6 +13,7 @@ from app.modules.admin.users_management.services.user_service import UserManagem
 from app.modules.admin.users_management.dependencies import get_user_management_service
 from app.modules.admin.users_management.filters.user_filter import UserFilter
 from app.modules.admin.dependencies import require_read_users_permission, require_write_users_permission
+from app.models.admin import Admin
 
 router = APIRouter()
 
@@ -70,11 +71,22 @@ async def get_user_by_telegram_id(
 @router.patch(
     "/update",
     response_model=StandardResponse[FullUserResponse],
-    dependencies=[Depends(require_write_users_permission)]
 )
 async def update_user_profile(
     payload: UpdateUserRequest,
+    request: Request,
+    admin: Admin = Depends(require_write_users_permission),
+    sync_channels: bool = Query(
+        True,
+        description="Enqueue Telegram channel synchronization after the update",
+    ),
     service: UserManagementService = Depends(get_user_management_service)
 ):
-    result = await service.update_user(payload)
+    result = await service.update_user(
+        payload,
+        sync_channels=sync_channels,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     return StandardResponse.success(result)
