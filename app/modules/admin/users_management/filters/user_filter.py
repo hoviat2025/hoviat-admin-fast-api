@@ -32,6 +32,9 @@ class UserFilter(Filter):
     phone_number: Optional[str] = None
     whatsapp_number: Optional[str] = None
     profile_path: Optional[str] = None
+    password: Optional[str] = None
+    hilfen_data: Optional[str] = None
+    hilfen_id_card_photo: Optional[str] = None
 
     # --- Partial Matches (Contains) ---
     username__ilike: Optional[str] = Field(default=None, alias="username_contains")
@@ -42,6 +45,11 @@ class UserFilter(Filter):
     phone_number__ilike: Optional[str] = Field(default=None, alias="phone_number_contains")
     whatsapp_number__ilike: Optional[str] = Field(default=None, alias="whatsapp_number_contains")
     profile_path__ilike: Optional[str] = Field(default=None, alias="profile_path_contains")
+    accounting_code__ilike: Optional[str] = Field(default=None, alias="accounting_code_contains")
+    password__ilike: Optional[str] = Field(default=None, alias="password_contains")
+    mode__ilike: Optional[str] = Field(default=None, alias="mode_contains")
+    hilfen_data__ilike: Optional[str] = Field(default=None, alias="hilfen_data_contains")
+    hilfen_id_card_photo__ilike: Optional[str] = Field(default=None, alias="hilfen_id_card_photo_contains")
 
     # ==========================================
     # 2. EXACT MATCHES (IDs, Codes, Enums)
@@ -51,6 +59,9 @@ class UserFilter(Filter):
     user_id: Optional[int] = None
     accounting_code: Optional[str] = None
     mode: Optional[str] = None
+    score: Optional[int] = None
+    ban_time: Optional[int] = None
+    join_date: Optional[int] = None
 
     # Message IDs
     telegram_message_id: Optional[str] = None
@@ -92,6 +103,9 @@ class UserFilter(Filter):
     score__gte: Optional[int] = Field(default=None, alias="min_score")
     score__lte: Optional[int] = Field(default=None, alias="max_score")
 
+    counter__gte: Optional[int] = Field(default=None, alias="min_counter")
+    counter__lte: Optional[int] = Field(default=None, alias="max_counter")
+
     # Ban Time (Unix Timestamp)
     ban_time__gte: Optional[int] = Field(default=None, alias="min_ban_time")
     ban_time__lte: Optional[int] = Field(default=None, alias="max_ban_time")
@@ -103,6 +117,8 @@ class UserFilter(Filter):
     # Hilfen numeric fields
     hilfen_date_join__gte: Optional[int] = Field(default=None, alias="hilfen_joined_after_unix")
     hilfen_date_join__lte: Optional[int] = Field(default=None, alias="hilfen_joined_before_unix")
+    hilfen_id__gte: Optional[int] = Field(default=None, alias="min_hilfen_id")
+    hilfen_id__lte: Optional[int] = Field(default=None, alias="max_hilfen_id")
     hilfen_all_projects__gte: Optional[int] = Field(default=None, alias="min_hilfen_all_projects")
     hilfen_all_projects__lte: Optional[int] = Field(default=None, alias="max_hilfen_all_projects")
     hilfen_all_projects_done__gte: Optional[int] = Field(default=None, alias="min_hilfen_projects_done")
@@ -122,6 +138,7 @@ class UserFilter(Filter):
     # ==========================================
 
     accounting_code__isnull: Optional[bool] = Field(default=None, alias="no_accounting_code")
+    counter__isnull: Optional[bool] = Field(default=None, alias="no_counter")
 
     username__isnull: Optional[bool] = Field(default=None, alias="no_username")
     first_name__isnull: Optional[bool] = Field(default=None, alias="no_first_name")
@@ -147,6 +164,8 @@ class UserFilter(Filter):
     hilfen_status__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_status")
     hilfen_date_join__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_date_join")
     hilfen_command__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_command")
+    hilfen_data__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_data")
+    hilfen_id_card_photo__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_id_card_photo")
     hilfen_all_projects__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_all_projects")
     hilfen_all_projects_done__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_all_projects_done")
     hilfen_limits_time__isnull: Optional[bool] = Field(default=None, alias="no_hilfen_limits_time")
@@ -178,8 +197,13 @@ class UserFilter(Filter):
         "phone_number__ilike",
         "whatsapp_number__ilike",
         "profile_path__ilike",
+        "accounting_code__ilike",
+        "password__ilike",
+        "mode__ilike",
         "hilfen_status__ilike",
-        "hilfen_command__ilike"
+        "hilfen_command__ilike",
+        "hilfen_data__ilike",
+        "hilfen_id_card_photo__ilike"
     )
     def make_partial_match(cls, v: Optional[str]):
         """

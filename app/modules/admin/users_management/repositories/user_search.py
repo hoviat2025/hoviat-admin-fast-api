@@ -36,10 +36,14 @@ class UserSearchRepository(UserBaseRepository):
                     User.nickname.ilike(term),
                     User.accounting_code.ilike(term),
                     User.phone_number.ilike(term),
+                    User.whatsapp_number.ilike(term),
                     User.country.ilike(term),
+                    User.mode.ilike(term),
+                    User.profile_path.ilike(term),
                     User.hilfen_status.ilike(term),
                     User.hilfen_command.ilike(term),
                     User.hilfen_data.ilike(term),
+                    User.hilfen_id_card_photo.ilike(term),
                 )
             )
 

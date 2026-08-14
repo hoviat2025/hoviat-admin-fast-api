@@ -1,5 +1,5 @@
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.admin_audit_log import AdminAuditLog
@@ -44,7 +44,7 @@ class AdminAuditRepository:
         admin_username: str | None = None,
         target_user_id: int | None = None,
         action: str | None = None,
-        changed_field: str | None = None,
+        changed_fields: list[str] | None = None,
         created_after=None,
         created_before=None,
         sync_channels: bool | None = None,
@@ -59,8 +59,10 @@ class AdminAuditRepository:
             stmt = stmt.where(AdminAuditLog.target_id == str(target_user_id))
         if action:
             stmt = stmt.where(AdminAuditLog.action == action)
-        if changed_field:
-            stmt = stmt.where(AdminAuditLog.changes.has_key(changed_field))
+        if changed_fields:
+            stmt = stmt.where(
+                or_(*(AdminAuditLog.changes.has_key(field) for field in changed_fields))
+            )
         if created_after is not None:
             stmt = stmt.where(AdminAuditLog.created_at >= created_after)
         if created_before is not None:
