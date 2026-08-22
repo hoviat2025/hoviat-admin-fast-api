@@ -15,6 +15,7 @@ class UpdateProfileRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     bio: Optional[str] = None
+    occupation: Optional[str] = None
     country: Optional[str] = None
     whatsapp_number: Optional[str] = None
 
@@ -32,6 +33,7 @@ class UpdatePrivacyRequest(BaseModel):
     phone_number_visibility: Optional[PrivacyScope] = None
     whatsapp_number_visibility: Optional[PrivacyScope] = None
     bio_visibility: Optional[PrivacyScope] = None
+    occupation_visibility: Optional[PrivacyScope] = None
     social_links_visibility: Optional[PrivacyScope] = None
 
 

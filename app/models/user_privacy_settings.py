@@ -91,6 +91,12 @@ class UserPrivacySettings(Base):
         nullable=False,
     )
 
+    occupation_visibility = Column(
+        SAEnum(PrivacyScope, name="privacy_scope"),
+        server_default="private",
+        nullable=False,
+    )
+
     social_links_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
         server_default="private",

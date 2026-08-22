@@ -26,6 +26,7 @@ class SingleProfileResponse(BaseModel):
 
     # Self-presentation
     bio: Optional[str] = None
+    occupation: Optional[str] = None
     social_links: Optional[List[SocialLinkResponse]] = None
 
     # Contact Info

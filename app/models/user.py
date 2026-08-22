@@ -19,6 +19,7 @@ FIELD_TIMESTAMP_FIELDS = (
     "last_name",
     "nickname",
     "bio",
+    "occupation",
     "phone_number",
     "whatsapp_number",
     "country",
@@ -66,6 +67,7 @@ class User(Base):
     last_name = Column(String, nullable=True)
     nickname = Column(String, nullable=True)
     bio = Column(Text, nullable=True)
+    occupation = Column(Text, nullable=True)
     
     # Contact Info
     phone_number = Column(String, nullable=True)
@@ -130,6 +132,7 @@ class User(Base):
     last_name_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     nickname_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     bio_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    occupation_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     phone_number_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     whatsapp_number_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     country_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)

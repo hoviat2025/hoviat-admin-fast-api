@@ -52,6 +52,9 @@ class GetUserProfileService:
         if privacy.bio_visibility == PrivacyScope.public:
             data["bio"] = user.bio
 
+        if privacy.occupation_visibility == PrivacyScope.public:
+            data["occupation"] = user.occupation
+
         if privacy.phone_number_visibility == PrivacyScope.public:
             data["phone_number"] = user.phone_number
 

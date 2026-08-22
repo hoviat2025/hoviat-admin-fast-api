@@ -81,6 +81,14 @@ class ProfileSearchRepository:
                 )
             )
 
+        if params.occupation:
+            conditions.append(
+                and_(
+                    User.occupation.ilike(f"%{params.occupation}%"),
+                    UserPrivacySettings.occupation_visibility == PrivacyScope.public,
+                )
+            )
+
         # 5. Privacy-Aware Exact Match.
         if params.country:
             conditions.append(
@@ -114,6 +122,10 @@ class ProfileSearchRepository:
                     and_(
                         User.bio.ilike(sq),
                         UserPrivacySettings.bio_visibility == PrivacyScope.public,
+                    ),
+                    and_(
+                        User.occupation.ilike(sq),
+                        UserPrivacySettings.occupation_visibility == PrivacyScope.public,
                     ),
                 )
             )

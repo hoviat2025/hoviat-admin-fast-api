@@ -13,7 +13,7 @@ class ProfileSearchParams(BaseModel):
     # Global text search across multiple fields
     q: Optional[str] = Field(
         default=None,
-        description="Global search across username, nickname, first_name, last_name, and bio.",
+        description="Global search across username, nickname, first_name, last_name, bio, and occupation.",
     )
 
     # Text Fields (Partial / Contains Match)
@@ -22,6 +22,7 @@ class ProfileSearchParams(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     bio: Optional[str] = None
+    occupation: Optional[str] = None
 
     # Exact Match Fields
     country: Optional[str] = None

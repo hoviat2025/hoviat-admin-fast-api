@@ -120,6 +120,7 @@ class AccountService:
             last_name=user.last_name,
             nickname=user.nickname,
             bio=user.bio,
+            occupation=user.occupation,
             phone_number=user.phone_number,
             whatsapp_number=user.whatsapp_number,
             country=user.country,

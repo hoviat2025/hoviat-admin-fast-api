@@ -17,6 +17,7 @@ class PrivacySettingsResponse(BaseModel):
     phone_number_visibility: str
     whatsapp_number_visibility: str
     bio_visibility: str
+    occupation_visibility: str
     social_links_visibility: str
 
     class Config:
@@ -38,6 +39,7 @@ class OwnProfileResponse(BaseModel):
     last_name: Optional[str] = None
     nickname: Optional[str] = None
     bio: Optional[str] = None
+    occupation: Optional[str] = None
     phone_number: Optional[str] = None
     whatsapp_number: Optional[str] = None
     country: Optional[str] = None
