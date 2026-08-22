@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     # Base endpoint for Telegram Bot API requests
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"
 
+    # --- SNS / User Panel ---
+    # Token of the Telegram bot used by the login widget. Falls back to BOT_API_TOKEN.
+    SNS_BOT_TOKEN: Optional[str] = None
+    # Base URL prefix used to assemble absolute profile picture URLs.
+    PROFILE_MEDIA_URL: str = ""
+    # Maximum age (seconds) of the Telegram auth_date before login is rejected.
+    TELEGRAM_LOGIN_MAX_AGE_SECONDS: int = 86400
+
     # --- Cloud Storage (R2/S3 Compatible) ---
     R2_ENDPOINT_URL: str
     R2_ACCESS_KEY_ID: str

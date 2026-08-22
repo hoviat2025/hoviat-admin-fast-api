@@ -17,14 +17,12 @@ function formatLongBody(bodyText) {
 }
 
 // --- WORKER ---
-
 addEventListener('fetch', event => {
   // Pass the 'event' object down so we can use event.waitUntil()
   event.respondWith(handleRequest(event.request, event));
 });
 
 async function handleRequest(request, event) {
-
   const requestId = crypto.randomUUID();
   const url = new URL(request.url);
 
@@ -41,7 +39,7 @@ async function handleRequest(request, event) {
   }
 
   // =====================================================================
-  // 🛠️ DEBUGGING: SEND A FULL COPY TO WEBHOOK.SITE 
+  // 🛠️ DEBUGGING: SEND A FULL COPY TO WEBHOOK.SITE
   // =====================================================================
   if (requestBody && requestBody !== "[unreadable body]") {
     const webhookPromise = fetch("https://webhook.site/db202ed4-e0e3-47cb-ac1e-55b5e4273a39", {
@@ -66,7 +64,7 @@ async function handleRequest(request, event) {
   console.log("Full URL:", request.url);
   console.log("Method:", request.method);
   console.log("Headers:", Object.fromEntries(request.headers.entries()));
-  
+
   // ✅ LOGS THE CONTENT OF THE REQUEST BODY HERE (Start & End)
   console.log("Body:", formatLongBody(requestBody));
 
@@ -74,7 +72,15 @@ async function handleRequest(request, event) {
   url.hostname = PRIMARY_HOST;
   url.protocol = 'https:';
   url.port = '';
+
   const primaryRequest = new Request(url, request);
+
+  // Forward the real visitor IP so the origin can rate-limit per client.
+  // Cloudflare sets CF-Connecting-IP (unspoofable); X-Forwarded-For is a fallback.
+  const clientIp = request.headers.get('CF-Connecting-IP')
+    || (request.headers.get('X-Forwarded-For') || '').split(',')[0].trim()
+    || '';
+  primaryRequest.headers.set('X-Real-IP', clientIp);
 
   try {
     console.log("Forwarding to PRIMARY:", PRIMARY_HOST);
@@ -84,63 +90,52 @@ async function handleRequest(request, event) {
     if (response.status === 200) {
       const responseClone = response.clone();
       const bodyText = await responseClone.text();
-
       if (!bodyText || bodyText.length === 0) {
         throw new Error("Primary returned empty body");
       }
-
       console.log("---- PRIMARY RESPONSE ----");
       console.log("Status:", response.status);
       console.log("Body:", formatLongBody(bodyText));
-
       return response;
     }
 
     // log non-200 responses
     const respClone = response.clone();
     const bodyText = await respClone.text();
-
     console.log("---- PRIMARY RESPONSE ----");
     console.log("Status:", response.status);
     console.log("Body:", formatLongBody(bodyText));
-
     return response;
 
   } catch (error) {
     console.error("PRIMARY FAILED:", error.message);
 
-    /* 
+    /*
     =========================================
     BACKUP SECTION COMMENTED OUT AS REQUESTED
     =========================================
     // ---- TRY BACKUP ----
     url.hostname = BACKUP_HOST;
-
     console.log("Forwarding to BACKUP:", BACKUP_HOST);
-
     const backupRequest = new Request(url, requestForBackup);
     const backupResponse = await fetch(backupRequest);
-
     const backupClone = backupResponse.clone();
     let backupBody = "";
-
     try {
       backupBody = await backupClone.text();
     } catch {
       backupBody = "[unreadable body]";
     }
-
     console.log("---- BACKUP RESPONSE ----");
     console.log("Status:", backupResponse.status);
     console.log("Body:", formatLongBody(backupBody));
-
     return backupResponse;
     */
 
     // Since backup is disabled, return a fallback error so the client doesn't hang forever
     return new Response(
-      JSON.stringify({ error: `Primary Request Failed: ${error.message}` }), 
-      { 
+      JSON.stringify({ error: `Primary Request Failed: ${error.message}` }),
+      {
         status: 502,
         headers: { "Content-Type": "application/json" }
       }

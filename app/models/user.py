@@ -1,6 +1,13 @@
-from sqlalchemy import Column, Integer, String, Boolean, BigInteger, TIMESTAMP, text
+from sqlalchemy import Column, Integer, String, Boolean, BigInteger, TIMESTAMP, Text, text
 from sqlalchemy.sql import func
-from app.models.base import Base  
+from sqlalchemy.orm import relationship
+from app.models.base import Base
+
+# Explicitly importing related models ensures they are registered in
+# SQLAlchemy's Base.metadata before the ORM mapper initializes.
+from app.models.user_privacy_settings import UserPrivacySettings
+from app.models.user_social_links import UserSocialLink
+from app.models.bookmark import Bookmark
 
 
 FIELD_TIMESTAMP_FIELDS = (
@@ -11,6 +18,7 @@ FIELD_TIMESTAMP_FIELDS = (
     "first_name",
     "last_name",
     "nickname",
+    "bio",
     "phone_number",
     "whatsapp_number",
     "country",
@@ -57,6 +65,7 @@ class User(Base):
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     nickname = Column(String, nullable=True)
+    bio = Column(Text, nullable=True)
     
     # Contact Info
     phone_number = Column(String, nullable=True)
@@ -118,6 +127,7 @@ class User(Base):
     first_name_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     last_name_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     nickname_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    bio_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     phone_number_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     whatsapp_number_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
     country_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
@@ -156,3 +166,44 @@ class User(Base):
             field: getattr(self, f"{field}_updated_at")
             for field in FIELD_TIMESTAMP_FIELDS
         }
+
+    # --------------------------------------------------------------------------
+    # Relationships
+    # --------------------------------------------------------------------------
+
+    # Privacy Settings (One-to-One)
+    # Access: user.privacy_settings.phone_number_visibility
+    privacy_settings = relationship(
+        UserPrivacySettings,
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    # Social Media Links (One-to-Many)
+    # Access: user.social_links
+    social_links = relationship(
+        UserSocialLink,
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="UserSocialLink.position",
+    )
+
+    # Bookmarks Created (One-to-Many)
+    # Access: user.bookmarks_created
+    bookmarks_created = relationship(
+        Bookmark,
+        foreign_keys=[Bookmark.bookmarker_id],
+        back_populates="bookmarker",
+        cascade="all, delete-orphan",
+    )
+
+    # Bookmarks Received (One-to-Many)
+    # Access: user.bookmarks_received
+    bookmarks_received = relationship(
+        Bookmark,
+        foreign_keys=[Bookmark.bookmarked_user_id],
+        back_populates="bookmarked_user",
+        cascade="all, delete-orphan",
+    )
+

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 from app.modules.admin.router import router as admin_router
 from app.modules.eurobot.router import router as eurobot_router
 from app.modules.hilfen.router import router as hilfen_router
+from app.modules.sns.router import router as sns_router
 
 from app.shared.clients.storage import storage_client
 # Import queue startup recovery and the two worker lane runners
@@ -102,6 +103,14 @@ if mode == "eurobot" or mode == "all":
         hilfen_router,
         prefix="/webhook/hoviat/v1/hilfen",
         tags=["Hilfen Module"]
+    )
+
+if mode == "sns" or mode == "all":
+    # Mount SNS user panel
+    app.include_router(
+        sns_router,
+        prefix="/api/sns",
+        tags=["SNS Module"]
     )
 
 @app.get("/health")

@@ -43,7 +43,8 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         error_mapping = {
             404: "NOT_FOUND",
             401: "UNAUTHORIZED",
-            403: "FORBIDDEN"
+            403: "FORBIDDEN",
+            429: "RATE_LIMITED"
         }
         error_code = error_mapping.get(exc.status_code, "HTTP_ERROR")
         
