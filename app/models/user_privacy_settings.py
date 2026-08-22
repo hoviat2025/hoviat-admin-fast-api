@@ -36,28 +36,29 @@ class UserPrivacySettings(Base):
     # Identity Information
     profile_picture_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="public",
+        server_default="private",
         nullable=False,
     )
 
     username_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="public",
+        server_default="private",
         nullable=False,
     )
 
     first_name_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="public",
+        server_default="private",
         nullable=False,
     )
 
     last_name_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="public",
+        server_default="private",
         nullable=False,
     )
 
+    # Only the nickname is public by default; every other field must be opted in.
     nickname_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
         server_default="public",
@@ -66,7 +67,7 @@ class UserPrivacySettings(Base):
 
     country_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="public",
+        server_default="private",
         nullable=False,
     )
 
@@ -86,13 +87,13 @@ class UserPrivacySettings(Base):
     # Self-presentation fields
     bio_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="public",
+        server_default="private",
         nullable=False,
     )
 
     social_links_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="public",
+        server_default="private",
         nullable=False,
     )
 
