@@ -41,19 +41,28 @@ class StorageClient:
             self.start()
         return self.s3_client
 
-    def upload_sync(self, file_bytes: bytes, destination_key: str, content_type: str = "image/jpeg") -> bool:
+    def upload_sync(
+        self,
+        file_bytes: bytes,
+        destination_key: str,
+        content_type: str = "image/jpeg",
+        cache_control: Optional[str] = None,
+    ) -> bool:
         """
         Synchronous upload function. 
         WARNING: Do not call this directly in an async view. Use upload_file().
         """
         client = self.get_client()
         try:
-            client.put_object(
-                Bucket=self.bucket,
-                Key=destination_key,
-                Body=file_bytes,
-                ContentType=content_type
-            )
+            put_args = {
+                "Bucket": self.bucket,
+                "Key": destination_key,
+                "Body": file_bytes,
+                "ContentType": content_type,
+            }
+            if cache_control:
+                put_args["CacheControl"] = cache_control
+            client.put_object(**put_args)
             return True
         except Exception as e:
             logger.error(f"R2 Upload Failed: {e}")
@@ -74,11 +83,56 @@ class StorageClient:
         )
 
         if success:
-            # NOTE: R2_ENDPOINT_URL is usually for API calls. 
-            # If you have a Custom Domain (e.g. static.myapp.com), replace the URL base below.
-            return f"https://pub-4036d35baed54ee7a9504072ea49740f.r2.dev/{file_name}"
+            # NOTE: R2_ENDPOINT_URL is usually for API calls. PROFILE_MEDIA_URL
+            # should point to the public R2/custom media domain.
+            base_url = settings.PROFILE_MEDIA_URL.rstrip("/")
+            return f"{base_url}/{file_name}" if base_url else file_name
         
         return None
+
+    async def upload_object(
+        self,
+        file_bytes: bytes,
+        destination_key: str,
+        content_type: str = "image/jpeg",
+        cache_control: Optional[str] = None,
+    ) -> bool:
+        """Upload an object while keeping public URL construction out of storage."""
+        loop = asyncio.get_running_loop()
+
+        def upload() -> bool:
+            client = self.get_client()
+            try:
+                put_args = {
+                    "Bucket": self.bucket,
+                    "Key": destination_key,
+                    "Body": file_bytes,
+                    "ContentType": content_type,
+                }
+                if cache_control:
+                    put_args["CacheControl"] = cache_control
+                client.put_object(**put_args)
+                return True
+            except Exception as e:
+                logger.error(f"R2 Upload Failed: {e}")
+                return False
+
+        return await loop.run_in_executor(None, upload)
+
+    async def delete_object(self, object_key: str) -> bool:
+        """Delete an object without blocking the async event loop."""
+        loop = asyncio.get_running_loop()
+
+        def delete() -> bool:
+            client = self.get_client()
+            try:
+                client.delete_object(Bucket=self.bucket, Key=object_key)
+                return True
+            except Exception as e:
+                logger.error(f"R2 Delete Failed: {e}")
+                return False
+
+        return await loop.run_in_executor(None, delete)
 
 # --- GLOBAL INSTANCE ---
 storage_client = StorageClient()

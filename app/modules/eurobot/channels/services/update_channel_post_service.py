@@ -181,6 +181,20 @@ class UpdateChannelPostService:
         chat_not_found = False
         picture_file = settings.DEFAULT_PROFILE_PICTURE
         image_path = None
+
+        current_user = await self.repo.get_fresh_by_id(user_id)
+        if current_user and current_user.profile_source == "user":
+            if current_user.profile_path:
+                media_base = settings.PROFILE_MEDIA_URL.rstrip("/")
+                picture_file = (
+                    f"{media_base}/{current_user.profile_path.lstrip('/')}"
+                    if media_base
+                    else settings.DEFAULT_PROFILE_PICTURE
+                )
+            # Do not call Telegram or create an orphaned bot image for a
+            # profile picture explicitly controlled by the user.
+            return picture_file, current_user.profile_path, current_user.chat_not_found
+
         chat_resp = None
         active_bot = euro_bot  # Default fallback bot
 
@@ -220,12 +234,18 @@ class UpdateChannelPostService:
         return picture_file, image_path, chat_not_found
 
     async def _update_profile_fields(self, user_id: int, image_path: Optional[str], chat_not_found: bool) -> None:
+        current_user = await self.repo.get_fresh_by_id(user_id)
+        update_data = {"chat_not_found": chat_not_found}
+
+        # A user-uploaded image is authoritative. Telegram sync must not
+        # overwrite or clear it during a later channel update.
+        if not current_user or current_user.profile_source != "user":
+            update_data["profile_path"] = image_path
+            update_data["profile_source"] = "telegram" if image_path else None
+
         await self.repo.update(
             user_id=user_id,
-            update_data={
-                "profile_path": image_path,
-                "chat_not_found": chat_not_found
-            }
+            update_data=update_data
         )
 
     def _main_channel_formatter_local(self, user: User) -> str:

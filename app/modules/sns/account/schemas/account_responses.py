@@ -3,6 +3,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from app.modules.sns.schemas import SocialLinkResponse
+from app.models.user_privacy_settings import PrivacyScope
 
 
 class PrivacySettingsResponse(BaseModel):
@@ -20,6 +21,11 @@ class PrivacySettingsResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ProfilePictureResponse(BaseModel):
+    profile_url: Optional[str] = None
+    profile_picture_visibility: PrivacyScope
 
 
 class OwnProfileResponse(BaseModel):

@@ -92,6 +92,8 @@ class User(Base):
 
     # Media / External Refs (Eurobot)
     profile_path = Column(String, nullable=True)
+    # Identifies whether the current profile image came from Telegram or the SNS panel.
+    profile_source = Column(String, nullable=True)
     telegram_message_id = Column(String, nullable=True)
     group_message_id = Column(String, nullable=True)
     public_message_id = Column(String, nullable=True)
