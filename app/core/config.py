@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     TELEGRAM_BASE_URL: str = "https://api.telegram.org"
 
     # --- SNS / User Panel ---
-    # Token of the Telegram bot used by the login widget. Falls back to BOT_API_TOKEN.
-    SNS_BOT_TOKEN: Optional[str] = None
+    # Shared secret the login-bot worker must present as Bearer when calling
+    # request-login. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    LOGIN_BOT_API_SECRET: str
     # Base URL prefix used to assemble absolute profile picture URLs.
     PROFILE_MEDIA_URL: str = ""
     # Maximum age (seconds) of the Telegram auth_date before login is rejected.

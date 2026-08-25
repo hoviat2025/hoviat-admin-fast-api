@@ -8,8 +8,7 @@ its job: this is the "login with code" flow for the SNS website.
   inline button ("ورود به سایت").
 - when the button is pressed, the worker calls
   POST /api/sns/auth/bot/request-login on the backend, authenticated with the
-  bot's own token as Bearer (backend checks it against SNS_BOT_TOKEN /
-  BOT_API_TOKEN).
+  shared API_SECRET as Bearer (backend holds it as LOGIN_BOT_API_SECRET).
 - the backend upserts the user, mints a 32-char single-use login token
   (5 minute TTL) and returns it.
 - the worker sends the token to the user in Farsi with usage instructions.
@@ -18,8 +17,11 @@ its job: this is the "login with code" flow for the SNS website.
 
 setup notes:
 
-- required Worker secret: TELEGRAM_BOT_TOKEN (the login bot's own token; must
-  match SNS_BOT_TOKEN or BOT_API_TOKEN on the backend).
+- required Worker secret: TELEGRAM_BOT_TOKEN (the login bot's token from
+  BotFather; used only for talking to Telegram).
+- required Worker secret: API_SECRET (a random string we generate; the backend
+  holds the same value as LOGIN_BOT_API_SECRET and uses it to authenticate
+  this worker).
 - required Worker var: API_ORIGIN (staging API base URL, no trailing slash).
 - point the Telegram webhook at this worker with setWebhook.
 - the database table sns_login_tokens must exist first (migration

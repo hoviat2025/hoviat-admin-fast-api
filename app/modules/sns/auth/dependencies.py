@@ -10,18 +10,8 @@ from app.modules.sns.auth.services.bot_login import (
     ExchangeTokenService,
     RequestBotLoginService,
 )
-from app.modules.sns.auth.services.telegram_login import TelegramLoginService
 
 _bot_bearer = HTTPBearer(auto_error=False)
-
-
-def get_telegram_login_service(
-    db: AsyncSession = Depends(get_db),
-) -> TelegramLoginService:
-    """
-    Dependency injection factory for the Telegram login feature.
-    """
-    return TelegramLoginService(db)
 
 
 def get_request_bot_login_service(
@@ -38,19 +28,18 @@ def get_exchange_token_service(
     return ExchangeTokenService(db)
 
 
-async def verify_sns_bot(
+async def verify_login_worker(
     credentials: HTTPAuthorizationCredentials | None = Security(_bot_bearer),
 ) -> None:
     """
-    Authenticates the SNS bot itself (not a user) via its bot token as Bearer.
-    Accepts SNS_BOT_TOKEN with fallback to BOT_API_TOKEN.
+    Authenticates the login-bot Cloudflare worker via the shared
+    LOGIN_BOT_API_SECRET sent as a Bearer token.
     """
-    expected = settings.SNS_BOT_TOKEN or settings.BOT_API_TOKEN
     supplied = credentials.credentials if credentials else ""
 
-    if not supplied or not hmac.compare_digest(supplied, expected):
+    if not supplied or not hmac.compare_digest(supplied, settings.LOGIN_BOT_API_SECRET):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid bot token",
+            detail="Invalid worker token",
             headers={"WWW-Authenticate": "Bearer"},
         )
