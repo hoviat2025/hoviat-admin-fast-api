@@ -1,0 +1,191 @@
+// SNS login bot Worker (TEST webhook).
+// Talks to users in Farsi, mints short-lived website login tokens through the
+// staging API, and delivers them to the user.
+//
+// Required Worker settings:
+//   Secret:  TELEGRAM_BOT_TOKEN  - the login bot's own Telegram token.
+//              Must equal SNS_BOT_TOKEN (or BOT_API_TOKEN) configured on the
+//              backend, because the backend authenticates the bot with it.
+//   Var:     API_ORIGIN          - e.g. "https://staging.185.202.113.95.nip.io"
+//
+// Webhook setup (run once):
+//   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+//        -d "url=<this-worker-url>"
+
+const LOGIN_BUTTON = "web_login";
+
+export default {
+  async fetch(request, env) {
+    if (request.method !== "POST") {
+      return new Response("OK");
+    }
+
+    let update;
+    try {
+      update = await request.json();
+    } catch (error) {
+      console.error("Failed to parse Telegram JSON:", error);
+      return new Response("bad json", { status: 400 });
+    }
+
+    try {
+      // Button presses arrive as callback_query updates.
+      if (update.callback_query) {
+        await handleCallback(update.callback_query, env);
+        return new Response("ok");
+      }
+
+      const msg = update.message;
+      if (!msg || !msg.from) {
+        return new Response("ok");
+      }
+
+      const text = (msg.text || "").trim();
+      const from = msg.from;
+
+      if (text === "/start") {
+        await sendStartMessage(env, msg.chat.id);
+        return new Response("ok");
+      }
+
+      // Any other text: nudge the user toward the login button.
+      await sendMessage(env, msg.chat.id, {
+        text: "برای ورود به سایت، دکمه زیر را بزنید:",
+        reply_markup: buildLoginKeyboard(),
+      });
+      console.log(`Handled fallback text for user ${from.id}`);
+    } catch (error) {
+      console.error("Unhandled error while processing update:", error);
+    }
+
+    return new Response("ok");
+  },
+};
+
+async function handleCallback(callbackQuery, env) {
+  const chatId = callbackQuery.message?.chat?.id;
+  if (!chatId) return;
+
+  // Always close the loading spinner on the button, even on failure.
+  const answer = async (text) => {
+    try {
+      await callTelegram(env, "answerCallbackQuery", {
+        callback_query_id: callbackQuery.id,
+        text,
+      });
+    } catch (error) {
+      console.error("answerCallbackQuery failed:", error);
+    }
+  };
+
+  if (callbackQuery.data !== LOGIN_BUTTON) {
+    await answer("");
+    return;
+  }
+
+  const from = callbackQuery.from;
+  let data;
+  try {
+    data = await requestLoginToken(env, from);
+  } catch (error) {
+    console.error("Login token request failed:", error);
+    await answer("خطا در ارتباط با سرور");
+    await sendMessage(env, chatId, {
+      text: "خطایی رخ داد. لطفاً چند لحظه بعد دوباره تلاش کنید.",
+    });
+    return;
+  }
+
+  if (!data || !data.login_token) {
+    await answer("دریافت کد ناموفق بود");
+    await sendMessage(env, chatId, {
+      text: "دریافت کد ورود ناموفق بود. لطفاً کمی بعد دوباره تلاش کنید.",
+    });
+    return;
+  }
+
+  const minutes = Math.max(1, Math.round((data.expires_in || 300) / 60));
+  await answer("کد ورود ساخته شد");
+  await sendMessage(env, chatId, {
+    text: [
+      "کد ورود شما:",
+      "",
+      `\`${data.login_token}\``,
+      "",
+      `این کد ${minutes} دقیقه اعتبار دارد و فقط یک بار قابل استفاده است.`,
+      "آن را در صفحه ورود سایت وارد کنید.",
+    ].join("\n"),
+  });
+}
+
+async function sendStartMessage(env, chatId) {
+  await sendMessage(env, chatId, {
+    text: [
+      "سلام!",
+      "",
+      "این ربات برای ورود به وب‌سایت استفاده می‌شود.",
+      "با زدن دکمه زیر یک کد یک‌بارمصرف دریافت می‌کنید",
+      "که می‌توانید در صفحه ورود سایت وارد کنید.",
+    ].join("\n"),
+    reply_markup: buildLoginKeyboard(),
+  });
+}
+
+function buildLoginKeyboard() {
+  return JSON.stringify({
+    inline_keyboard: [[{ text: "ورود به سایت", callback_data: LOGIN_BUTTON }]],
+  });
+}
+
+// Calls POST /api/sns/auth/bot/request-login and unwraps the StandardResponse
+// envelope ({ data, meta, error }).
+async function requestLoginToken(env, from) {
+  const url = `${env.API_ORIGIN}/api/sns/auth/bot/request-login`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.TELEGRAM_BOT_TOKEN}`,
+    },
+    body: JSON.stringify({
+      user_id: from.id,
+      first_name: from.first_name || undefined,
+      last_name: from.last_name || undefined,
+      username: from.username || undefined,
+    }),
+  });
+
+  console.log(`request-login returned ${response.status}`);
+
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    console.error("request-login error body:", body);
+    return null;
+  }
+
+  return body?.data ?? null;
+}
+
+async function sendMessage(env, chatId, options) {
+  return callTelegram(env, "sendMessage", {
+    chat_id: chatId,
+    ...options,
+  });
+}
+
+async function callTelegram(env, method, payload) {
+  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    console.error(`Telegram ${method} returned ${response.status}:`, await response.text());
+  }
+
+  return response;
+}
