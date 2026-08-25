@@ -17,12 +17,13 @@ its job: this is the "login with code" flow for the SNS website.
 
 setup notes:
 
-- required Worker secret: TELEGRAM_BOT_TOKEN (the login bot's token from
-  BotFather; used only for talking to Telegram).
-- required Worker secret: API_SECRET (a random string we generate; the backend
-  holds the same value as LOGIN_BOT_API_SECRET and uses it to authenticate
-  this worker).
-- required Worker var: API_ORIGIN (staging API base URL, no trailing slash).
+- all configuration lives as constants at the top of the .js file:
+  BOT_TOKEN (the login bot's token from BotFather, used only for talking to
+  Telegram), API_ORIGIN (staging API base URL, no trailing slash), and
+  API_SECRET (a random string we generate; the backend holds the same value
+  as LOGIN_BOT_API_SECRET and uses it to authenticate this worker).
+- edit those constants in the Cloudflare editor and save - no dashboard
+  variables needed.
 - point the Telegram webhook at this worker with setWebhook.
 - the database table sns_login_tokens must exist first (migration
   scripts/database/20260825_10_add_sns_login_tokens.sql).
