@@ -6,6 +6,42 @@ from app.models.user import User
 from app.models.user_privacy_settings import PrivacyScope, UserPrivacySettings
 from app.modules.sns.profiles.schemas.profile_requests import ProfileSearchParams
 
+# Fields searched by the global "q" query, paired with their privacy column.
+_GLOBAL_SEARCH_FIELDS = (
+    (User.username, UserPrivacySettings.username_visibility),
+    (User.nickname, UserPrivacySettings.nickname_visibility),
+    (User.first_name, UserPrivacySettings.first_name_visibility),
+    (User.last_name, UserPrivacySettings.last_name_visibility),
+    (User.bio, UserPrivacySettings.bio_visibility),
+    (User.occupation, UserPrivacySettings.occupation_visibility),
+    (User.country, UserPrivacySettings.country_visibility),
+)
+
+# Upper bound on words considered in a global search; extras are ignored.
+GLOBAL_SEARCH_MAX_WORDS = 5
+
+
+def _build_global_search_conditions(q: str) -> list:
+    """One OR-over-public-fields block per word, ANDed across words."""
+    words = q.split()[:GLOBAL_SEARCH_MAX_WORDS]
+
+    word_conditions = []
+    for word in words:
+        pattern = f"%{word}%"
+        word_conditions.append(
+            or_(
+                *[
+                    and_(column.ilike(pattern), visibility == PrivacyScope.public)
+                    for column, visibility in _GLOBAL_SEARCH_FIELDS
+                ]
+            )
+        )
+
+    if not word_conditions:
+        return []
+
+    return [and_(*word_conditions)]
+
 
 class ProfileSearchRepository:
     """
@@ -99,36 +135,10 @@ class ProfileSearchRepository:
             )
 
         # 6. Global Search "q" (Any matching field MUST be public).
+        # Multi-word queries are AND-of-ORs: every word must appear somewhere
+        # in a public field (country included). Capped at 5 words.
         if params.q:
-            sq = f"%{params.q}%"
-            conditions.append(
-                or_(
-                    and_(
-                        User.username.ilike(sq),
-                        UserPrivacySettings.username_visibility == PrivacyScope.public,
-                    ),
-                    and_(
-                        User.nickname.ilike(sq),
-                        UserPrivacySettings.nickname_visibility == PrivacyScope.public,
-                    ),
-                    and_(
-                        User.first_name.ilike(sq),
-                        UserPrivacySettings.first_name_visibility == PrivacyScope.public,
-                    ),
-                    and_(
-                        User.last_name.ilike(sq),
-                        UserPrivacySettings.last_name_visibility == PrivacyScope.public,
-                    ),
-                    and_(
-                        User.bio.ilike(sq),
-                        UserPrivacySettings.bio_visibility == PrivacyScope.public,
-                    ),
-                    and_(
-                        User.occupation.ilike(sq),
-                        UserPrivacySettings.occupation_visibility == PrivacyScope.public,
-                    ),
-                )
-            )
+            conditions.extend(_build_global_search_conditions(params.q))
 
         # 7. Apply conditions dynamically.
         if conditions:

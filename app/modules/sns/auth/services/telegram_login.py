@@ -3,13 +3,10 @@ import hmac
 import logging
 import time
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ServiceError
-from app.core.security import create_access_token
-from app.models.user_privacy_settings import UserPrivacySettings
 from app.shared.repositories.job_queue import JobQueueRepository
 from app.shared.repositories.user_base import UserBaseRepository
 
@@ -17,7 +14,7 @@ from app.modules.sns.auth.schemas.telegram_login import (
     TelegramLoginRequest,
     TelegramLoginResponse,
 )
-from app.modules.sns.utils import resolve_sync_source
+from app.modules.sns.auth.services.post_login import finalize_login
 
 logger = logging.getLogger(__name__)
 
@@ -85,38 +82,10 @@ class TelegramLoginService:
 
         user = await self.user_repo.upsert(user_data)
 
-        # 4. Ensure a default privacy row exists so the profile is discoverable.
-        await self._ensure_privacy(user.user_id)
-
-        # 5. Enqueue a channel sync so the user's channel posts reflect the
-        #    latest Telegram identity (mirrors eurobot/hilfen upsert behavior).
-        try:
-            await self.queue_repo.enqueue_medium_priority(
-                user_id=user.user_id,
-                source=resolve_sync_source(user),
-            )
-        except Exception:
-            logger.exception(
-                "SNS login succeeded for user %s, but channel sync could not be queued.",
-                user.user_id,
-            )
-
-        # 6. Issue the SNS JWT.
-        token = create_access_token(
-            {"sub": str(user.user_id), "role": "sns_user"}
+        # 4-6. Privacy row, channel sync, and JWT issuance are shared.
+        return await finalize_login(
+            self.db,
+            self.queue_repo,
+            user,
+            fallback_first_name=payload.first_name,
         )
-
-        return TelegramLoginResponse(
-            access_token=token,
-            user_id=user.user_id,
-            first_name=user.first_name or payload.first_name,
-            username=user.username,
-        )
-
-    async def _ensure_privacy(self, user_id: int) -> None:
-        existing = await self.db.scalar(
-            select(UserPrivacySettings).where(UserPrivacySettings.user_id == user_id)
-        )
-        if existing is None:
-            self.db.add(UserPrivacySettings(user_id=user_id))
-        await self.db.commit()

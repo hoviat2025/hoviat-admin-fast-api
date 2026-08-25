@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     PROFILE_MEDIA_URL: str = ""
     # Maximum age (seconds) of the Telegram auth_date before login is rejected.
     TELEGRAM_LOGIN_MAX_AGE_SECONDS: int = 86400
+    # Lifetime of bot-issued SNS login tokens (user types token into website).
+    LOGIN_TOKEN_TTL_SECONDS: int = 300
 
     # --- Cloud Storage (R2/S3 Compatible) ---
     R2_ENDPOINT_URL: str
