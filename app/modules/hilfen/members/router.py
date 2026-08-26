@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, Optional
 
 from app.core.database import get_db
 from app.core.schemas import StandardResponse
@@ -17,6 +18,14 @@ from app.modules.hilfen.members.services.upsert_member_service import UpsertHilf
 from app.modules.hilfen.members.services.get_quote_reply_info_service import (
     GetHilfenQuoteReplyInfoService,
 )
+from app.modules.hilfen.members.schemas.bulk_read_request import BulkReadMembersRequest
+from app.modules.hilfen.members.schemas.bulk_insert_request import BulkInsertMembersRequest, BulkInsertResultData
+from app.modules.hilfen.members.schemas.bulk_update_request import BulkUpdateMembersRequest, BulkUpdateResultData
+from app.modules.hilfen.members.schemas.bulk_upsert_request import BulkUpsertMembersRequest, BulkUpsertResultData
+from app.modules.hilfen.members.services.bulk_read_members_service import BulkReadMembersService
+from app.modules.hilfen.members.services.bulk_insert_members_service import BulkInsertMembersService
+from app.modules.hilfen.members.services.bulk_update_members_service import BulkUpdateMembersService
+from app.modules.hilfen.members.services.bulk_upsert_members_service import BulkUpsertMembersService
 
 router = APIRouter()
 
@@ -95,3 +104,58 @@ async def quote_reply_info(
     service = GetHilfenQuoteReplyInfoService(db)
     data = await service.execute(user_id)
     return StandardResponse.success(data=HilfenQuoteReplyInfoResponse(**data))
+
+@router.post("/read_bulk_members", response_model=StandardResponse[Dict[str, Optional[HilfenUserResponse]]])
+async def read_bulk_members(
+    payload: BulkReadMembersRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Reads multiple Hilfen members in one request. Returns a map of
+    user_id (as string) -> profile, or null for users that do not exist.
+    """
+    service = BulkReadMembersService(db)
+    result_map = await service.execute(payload.user_ids)
+    return StandardResponse.success(data=result_map)
+
+@router.post("/insert_bulk_members", response_model=StandardResponse[BulkInsertResultData])
+async def insert_bulk_members(
+    payload: BulkInsertMembersRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Inserts multiple Hilfen members. Per-item results; max 20 items per
+    batch, extras are reported as failed without being processed.
+    """
+    service = BulkInsertMembersService(db)
+    result = await service.execute(payload.users_info)
+    meta_stats = {"successful": len(result.successful), "failed": len(result.failed)}
+    return StandardResponse.success(data=result, meta=meta_stats)
+
+@router.post("/update_bulk_members", response_model=StandardResponse[BulkUpdateResultData])
+async def update_bulk_members(
+    payload: BulkUpdateMembersRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Updates multiple Hilfen members. Per-item results; max 20 items per
+    batch, extras are reported as failed without being processed.
+    """
+    service = BulkUpdateMembersService(db)
+    result = await service.execute(payload.users_info)
+    meta_stats = {"successful": len(result.successful), "failed": len(result.failed)}
+    return StandardResponse.success(data=result, meta=meta_stats)
+
+@router.post("/upsert_bulk_members", response_model=StandardResponse[BulkUpsertResultData])
+async def upsert_bulk_members(
+    payload: BulkUpsertMembersRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upserts multiple Hilfen members. Per-item results; max 20 items per
+    batch, extras are reported as failed without being processed.
+    """
+    service = BulkUpsertMembersService(db)
+    result = await service.execute(payload.users_info)
+    meta_stats = {"successful": len(result.successful), "failed": len(result.failed)}
+    return StandardResponse.success(data=result, meta=meta_stats)
