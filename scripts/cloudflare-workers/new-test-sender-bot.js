@@ -26,6 +26,20 @@ export default {
       return new Response("ok");
     }
 
+    // TEMP DIAGNOSTIC: log the full update for anything touching the public
+    // channel/group so we can see the real Telegram fields.
+    const PUBLIC_CHANNEL_ID = -1003997195070;
+    const PUBLIC_GROUP_ID = -1003915100291;
+    if (
+      msg.sender_chat?.id === PUBLIC_CHANNEL_ID ||
+      msg.forward_from_chat?.id === PUBLIC_CHANNEL_ID ||
+      msg.forward_origin?.chat?.id === PUBLIC_CHANNEL_ID ||
+      msg.chat?.id === PUBLIC_GROUP_ID ||
+      msg.external_reply?.origin?.chat?.id === PUBLIC_CHANNEL_ID
+    ) {
+      console.log("PUBLIC_UPDATE_RAW:", JSON.stringify(update));
+    }
+
     // Test source channel: forwarded messages containing the add_user marker.
     const TEST_SOURCE_CHANNEL_ID = -1003941932759;
     if (
