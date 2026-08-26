@@ -175,8 +175,9 @@ class UpdateChannelPostService:
     async def _process_profile_image(self, user_id: int, update_source: str) -> Tuple[str, Optional[str], bool]:
         """
         Retrieves user's profile picture using getChat.
-        Supports dual-bot fallbacks if update_source is set to 'both' to prevent
-        unnecessary chat_not_found flags if the user only has one of our bots started.
+        Always tries both bots (eurobot first, then hilfenbot) so users who
+        only started one of the two bots still resolve their photo. A getChat
+        failure on one bot is harmless - the chat simply is not visible to it.
         """
         chat_not_found = False
         picture_file = settings.DEFAULT_PROFILE_PICTURE
@@ -198,19 +199,19 @@ class UpdateChannelPostService:
         chat_resp = None
         active_bot = euro_bot  # Default fallback bot
 
-        # Resolve getChat utilizing dual-bot fallbacks when using 'both' source
-        if update_source == "both":
-            chat_resp = await euro_bot.send_request("getChat", {"chat_id": str(user_id)})
-            if chat_resp.success:
-                active_bot = euro_bot
-            if not chat_resp.success:
-                logger.warning(f"getChat failed for {user_id} via euro_bot under 'both' source. Trying hilfen_bot fallback.")
-                chat_resp = await hilfen_bot.send_request("getChat", {"chat_id": str(user_id)})
-                if chat_resp.success:
-                    active_bot = hilfen_bot
+        # Try the primary bot first, then fall back to the other one. The
+        # bot that succeeded is passed along so its own photo handle is used
+        # for the cloud upload.
+        chat_resp = await euro_bot.send_request("getChat", {"chat_id": str(user_id)})
+        if chat_resp.success:
+            active_bot = euro_bot
         else:
-            active_bot = hilfen_bot if update_source == "hilfenbot" else euro_bot
-            chat_resp = await active_bot.send_request("getChat", {"chat_id": str(user_id)})
+            logger.warning(
+                f"getChat failed for {user_id} via euro_bot. Trying hilfen_bot fallback."
+            )
+            chat_resp = await hilfen_bot.send_request("getChat", {"chat_id": str(user_id)})
+            if chat_resp.success:
+                active_bot = hilfen_bot
 
         # Evaluate the final response
         if not chat_resp or not chat_resp.success:
