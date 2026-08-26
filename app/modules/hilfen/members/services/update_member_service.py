@@ -19,6 +19,11 @@ class UpdateHilfenMemberService:
 
     async def execute(self, payload: HilfenInsertMemberRequest) -> User:
         # 1. Business Logic: Prepare Data
+        # to_update_dict() already enforces the nullification policy
+        # (protected identity/contact fields cannot be wiped with empty
+        # values; see schemas/request.py and user_update_policy.py).
+        # omit_protected_nulls() is kept as a second, cheap safety net for
+        # any future caller that bypasses the schema conversion.
         update_data = omit_protected_nulls(payload.to_update_dict())
 
         # Set Hilfen presence flag upon active profile update

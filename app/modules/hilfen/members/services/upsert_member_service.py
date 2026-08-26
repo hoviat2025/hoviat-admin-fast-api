@@ -75,6 +75,10 @@ class UpsertHilfenMemberService:
         db_data["is_in_hilfen_bot"] = True
 
         # 1. Attempt Check-and-Update Route
+        # NOTE: the insert path (to_db_dict) intentionally bypasses the
+        # nullification policy - an insert has no existing value to destroy.
+        # The policy is enforced on the update/upsert paths via
+        # omit_protected_nulls() + the schema conversion in request.py.
         user = await self.repo.get_by_id(user_id)
         if user:
             self._merge_fields(user, db_data)

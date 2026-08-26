@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from typing import Optional
 
+from app.shared.user_update_policy import PROTECTED_FROM_NULL_FIELDS
+
 class HilfenInsertMemberRequest(BaseModel):
     id: str
     user_id: str
@@ -52,10 +54,44 @@ class HilfenInsertMemberRequest(BaseModel):
 
     def to_update_dict(self) -> dict:
         """
-        Translates legacy Hilfen fields for partial updates.
-        Reuses to_db_dict() translation logic but excludes unset fields and primary key.
+        Translates legacy Hilfen fields for partial updates, applying the
+        nullification policy (see app/shared/user_update_policy.py).
+
+        Rule of thumb:
+          - PROTECTED fields (identity/contact, incl. hilfen_id/date_join):
+            an empty value ("") is treated as "I did not provide this" and the
+            field is skipped entirely. An existing value can never be wiped
+            with an empty string or null.
+          - NON-protected fields: passed through as-is - an explicit "" or
+            null is written verbatim (the client owns those fields). The only
+            exception: integer columns cannot store "", so an empty value
+            becomes NULL there instead of the insert-time default of 0.
         """
-        full = self.to_db_dict()
+        # "name" is a legacy composite that maps to first_name + last_name.
+        update_data = {}
+
+        def is_empty(value) -> bool:
+            return value is None or (isinstance(value, str) and not value.strip())
+
+        def is_numeric_db_field(db_field: str) -> bool:
+            return db_field in {
+                "hilfen_all_projects",
+                "hilfen_all_projects_done",
+                "hilfen_limits_time",
+            }
+
+        if "name" in self.model_fields_set:
+            name_str = (self.name or "").strip()
+            if " " in name_str:
+                first_name, last_name = name_str.split(" ", 1)
+            else:
+                first_name, last_name = name_str, ""
+            for db_field, value in (("first_name", first_name), ("last_name", last_name)):
+                # Protected: empty means "not provided", never a wipe.
+                if is_empty(value):
+                    continue
+                update_data[db_field] = value
+
         legacy_to_db_fields = {
             "id": ("hilfen_id",),
             "phonenumber": ("phone_number",),
@@ -63,7 +99,6 @@ class HilfenInsertMemberRequest(BaseModel):
             "all_projects": ("hilfen_all_projects",),
             "all_projects_done": ("hilfen_all_projects_done",),
             "limits_time": ("hilfen_limits_time",),
-            "name": ("first_name", "last_name"),
             "country": ("country",),
             "status": ("hilfen_status",),
             "date_join": ("hilfen_date_join",),
@@ -71,9 +106,31 @@ class HilfenInsertMemberRequest(BaseModel):
             "data": ("hilfen_data",),
         }
 
-        update_data = {}
-        for legacy_field in self.model_fields_set - {"user_id"}:
-            for db_field in legacy_to_db_fields.get(legacy_field, ()):
-                update_data[db_field] = full[db_field]
+        for legacy_field, db_fields in legacy_to_db_fields.items():
+            if legacy_field not in self.model_fields_set:
+                continue
+
+            raw = getattr(self, legacy_field)
+
+            for db_field in db_fields:
+                # Protected + empty: skip, keep the stored value untouched.
+                if db_field in PROTECTED_FROM_NULL_FIELDS:
+                    if is_empty(raw):
+                        continue
+                    # Protected numeric identifiers: only real digits may be
+                    # written; garbage must never erase the stored value, so
+                    # it is skipped like an empty value.
+                    if not raw.isdigit():
+                        continue
+                    update_data[db_field] = int(raw)
+                    continue
+
+                # Non-protected, owned by the client:
+                #   - integer columns: digits -> int, empty/garbage -> NULL
+                #   - string columns: written verbatim ("" stays "")
+                if is_numeric_db_field(db_field):
+                    update_data[db_field] = int(raw) if raw.isdigit() else None
+                else:
+                    update_data[db_field] = raw
 
         return update_data

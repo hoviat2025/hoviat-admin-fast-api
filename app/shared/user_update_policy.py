@@ -5,6 +5,10 @@ from typing import Any, Mapping
 
 PROTECTED_FROM_NULL_FIELDS = frozenset(
     {
+        # Identity / contact fields: an empty value from a bot client means
+        # "I did not provide this", NEVER "wipe the existing value". Clients
+        # must adopt field-level timestamp reconciliation before they may
+        # legitimately clear these.
         "first_name",
         "last_name",
         "phone_number",
@@ -13,6 +17,10 @@ PROTECTED_FROM_NULL_FIELDS = frozenset(
         "is_ban",
         "ban_time",
         "join_date",
+        # Hilfen identity fields: same rule as above. A client sending
+        # hilfen_id/date_join empty must not silently erase the stored value.
+        "hilfen_id",
+        "hilfen_date_join",
     }
 )
 
