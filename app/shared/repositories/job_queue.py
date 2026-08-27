@@ -4,15 +4,23 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.models.job_queue import JobQueue, JobStatus, JobPriority
 
 
-VALID_JOB_SOURCES = frozenset({"eurobot", "hilfenbot", "both"})
+VALID_JOB_SOURCES = frozenset({"eurobot", "hilfenbot", "both", "none"})
 
 
 def merge_job_sources(existing_source: str, incoming_source: str) -> str:
-    """Merge two validated queue sources without dropping either bot's work."""
+    """Merge two validated queue sources without dropping either bot's work.
+
+    "none" means "no bot membership reported yet" - it is a neutral
+    placeholder, NOT a statement that the user belongs to no bot. A bot
+    source always upgrades a "none" job; only two real bot sources conflict
+    into "both".
+    """
     if existing_source == incoming_source:
         return existing_source
-    if existing_source == "both" or incoming_source == "both":
-        return "both"
+    if existing_source == "none":
+        return incoming_source
+    if incoming_source == "none":
+        return existing_source
     return "both"
 
 
@@ -30,9 +38,21 @@ class JobQueueRepository:
 
     @staticmethod
     def source_merge_expression(incoming_source: str):
-        """Return the SQL expression used when coalescing a pending job."""
+        """Return the SQL expression used when coalescing a pending job.
+
+        Mirrors merge_job_sources(). The incoming source is a static value,
+        never a column, so the branches that depend on it are resolved here in
+        Python before building the SQL CASE against the existing column:
+          - incoming "none" keeps whatever is already pending
+          - incoming bot source upgrades an existing "none" job
+          - two different bot sources combine into "both"
+        """
+        if incoming_source == "none":
+            return JobQueue.source
+
         return case(
             (JobQueue.source == incoming_source, JobQueue.source),
+            (JobQueue.source == "none", incoming_source),
             (JobQueue.source == "both", "both"),
             else_="both",
         )

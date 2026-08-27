@@ -7,12 +7,20 @@ def resolve_sync_source(user) -> str:
     """
     Determine the queue 'source' for a user's channel sync, mirroring the
     logic used by UserManagementService and CronSyncService.
+
+    The source is derived strictly from the bot-presence flags, which are
+    set only by bot upserts. A user with no membership reported yet resolves
+    to "none": the queue still syncs their main-channel entry, but sends no
+    public/hilfen announcements, and the source upgrades automatically when a
+    bot upsert arrives (see merge_job_sources).
     """
     if user.is_in_eurobot and user.is_in_hilfen_bot:
         return "both"
     if user.is_in_hilfen_bot:
         return "hilfenbot"
-    return "eurobot"
+    if user.is_in_eurobot:
+        return "eurobot"
+    return "none"
 
 
 def assemble_profile_url(profile_path: Optional[str]) -> Optional[str]:

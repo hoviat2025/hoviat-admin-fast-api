@@ -86,13 +86,18 @@ class CronSyncService:
         # 2. Loop through candidates and enqueue them
         for user in users_to_sync:
             try:
-                # Resolve source directly based on their active platform presence flags
+                # Resolve source directly based on their active platform
+                # presence flags. Users with no membership reported yet get
+                # "none": main-channel sync only, no sub-channel announcements
+                # (the same neutral placeholder used by the SNS resolver).
                 if user.is_in_eurobot and user.is_in_hilfen_bot:
                     source = "both"
                 elif user.is_in_hilfen_bot:
                     source = "hilfenbot"
-                else:
+                elif user.is_in_eurobot:
                     source = "eurobot"
+                else:
+                    source = "none"
 
                 # Enqueue as LOW priority (1) using our repository method.
                 # We set commit=False so we can commit all records together at the end.
