@@ -14,12 +14,15 @@ from app.core.exceptions import ServiceError
 from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
 
 # Bot Instances
-from app.shared.bot_instances import sender_bot, euro_bot, hilfen_bot
+from app.shared.bot_instances import sender_bot, euro_bot, hilfen_bot, sns_login_bot
 
 # Service Imports
 from app.modules.eurobot.members.services.profile_service import save_user_profile_to_cloud
 # Formatter Import
 from app.modules.eurobot.channels.services.format_messages import create_telegram_message
+# Privacy policy
+from app.models.user_privacy_settings import PrivacyScope, UserPrivacySettings
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,33 @@ class UpdateChannelPostService:
 
         # 1. Fetch fresh, non-cached user record
         user = await self._get_user_or_404(user_id)
+
+        # 1b. Ensure the SNS privacy row exists (migration 07 backfilled the
+        # existing rows; this keeps future users covered as they are first
+        # processed). ON CONFLICT DO NOTHING makes it idempotent and race-safe
+        # against the two worker lanes. Policy: nickname, country, profile
+        # picture, bio, occupation public; rest private - mirror the SNS login
+        # ensure_privacy_row() and migration 11.
+        await self.db.execute(
+            pg_insert(UserPrivacySettings)
+            .values(
+                user_id=user_id,
+                is_profile_discoverable=True,
+                profile_picture_visibility=PrivacyScope.public.value,
+                username_visibility=PrivacyScope.private.value,
+                first_name_visibility=PrivacyScope.private.value,
+                last_name_visibility=PrivacyScope.private.value,
+                nickname_visibility=PrivacyScope.public.value,
+                country_visibility=PrivacyScope.public.value,
+                phone_number_visibility=PrivacyScope.private.value,
+                whatsapp_number_visibility=PrivacyScope.private.value,
+                bio_visibility=PrivacyScope.public.value,
+                occupation_visibility=PrivacyScope.public.value,
+                social_links_visibility=PrivacyScope.private.value,
+            )
+            .on_conflict_do_nothing(index_elements=[UserPrivacySettings.user_id])
+        )
+        await self.db.commit()
 
         # Execution flags to target confirmations on-demand
         sent_main = False
@@ -199,9 +229,11 @@ class UpdateChannelPostService:
         chat_resp = None
         active_bot = euro_bot  # Default fallback bot
 
-        # Try the primary bot first, then fall back to the other one. The
-        # bot that succeeded is passed along so its own photo handle is used
-        # for the cloud upload.
+        # Try the primary bot first, then fall back to the others. The bot
+        # that succeeded is passed along so its own photo handle is used for
+        # the cloud upload. The SNS login bot is the last resort: users who
+        # only ever started the login bot (never eurobot/hilfen) still resolve
+        # their profile photo through it.
         chat_resp = await euro_bot.send_request("getChat", {"chat_id": str(user_id)})
         if chat_resp.success:
             active_bot = euro_bot
@@ -212,6 +244,13 @@ class UpdateChannelPostService:
             chat_resp = await hilfen_bot.send_request("getChat", {"chat_id": str(user_id)})
             if chat_resp.success:
                 active_bot = hilfen_bot
+            else:
+                logger.warning(
+                    f"getChat failed for {user_id} via hilfen_bot. Trying sns_login_bot fallback."
+                )
+                chat_resp = await sns_login_bot.send_request("getChat", {"chat_id": str(user_id)})
+                if chat_resp.success:
+                    active_bot = sns_login_bot
 
         # Evaluate the final response
         if not chat_resp or not chat_resp.success:

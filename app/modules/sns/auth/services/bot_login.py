@@ -56,11 +56,18 @@ class RequestBotLoginService:
         self.user_repo = UserBaseRepository(db)
 
     async def execute(self, payload: BotLoginRequest) -> BotLoginResponse:
+        # The Telegram first/last names are combined into our `nickname` field
+        # and are NOT stored as first_name/last_name. Those columns belong to
+        # the user's self-managed profile (e.g. set later by the frontend via
+        # account/profile update); at login we only persist what Telegram
+        # tells us: user_id, nickname, and username when present.
+        full_name = " ".join(
+            part.strip() for part in (payload.first_name, payload.last_name) if part and part.strip()
+        )
+
         user_data = {"user_id": payload.user_id}
-        if payload.first_name:
-            user_data["first_name"] = payload.first_name
-        if payload.last_name:
-            user_data["last_name"] = payload.last_name
+        if full_name:
+            user_data["nickname"] = full_name
         if payload.username:
             user_data["username"] = payload.username
 
