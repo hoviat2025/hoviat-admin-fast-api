@@ -134,7 +134,14 @@ class UpdateChannelPostService:
         # These are evaluated regardless of whether we ran an insert or update on the main channel.
         # Changed from if-elif to independent ifs to support updating both sub-channels
         # in a single pass when using 'both' update_source.
-        if update_source in ["eurobot", "both"] and user.public_message_id is None:
+        #
+        # "none" source (SNS-only users with no bot membership reported) still
+        # sends the public announcement post. The post itself does NOT set the
+        # is_in_eurobot flag - membership stays unknown - but the public post
+        # triggers the webhook handshake that writes the message IDs onto the
+        # user row, without which the main-channel confirmation can never
+        # complete (and the job would retry, re-sending duplicate posts).
+        if update_source in ["eurobot", "both", "none"] and user.public_message_id is None:
             await self._send_user_post_in_public_channel(main_msg_id)
             sent_public = True
             logger.info(f"Public channel post sent for user {user_id}")
