@@ -18,6 +18,8 @@ from app.shared.bot_instances import sender_bot, euro_bot, hilfen_bot, sns_login
 
 # Service Imports
 from app.modules.eurobot.members.services.profile_service import save_user_profile_to_cloud
+# Staging table for channel message-ID handshakes
+from app.modules.eurobot.channels.repositories.stage_message_ids import TelegramMessageRepository
 # Formatter Import
 from app.modules.eurobot.channels.services.format_messages import create_telegram_message
 # Privacy policy
@@ -30,6 +32,7 @@ class UpdateChannelPostService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = UserBaseRepository(db)
+        self.stage_repo = TelegramMessageRepository(db)
 
     async def execute(self, payload: UpdateChannelPostRequest | int, update_source: str = "eurobot") -> User:
         """
@@ -90,6 +93,38 @@ class UpdateChannelPostService:
         # ==========================================
         if user.telegram_message_id:
             main_msg_id = int(user.telegram_message_id)
+
+            # Seed the staging row for this main post. The telegram_messages
+            # row normally arrives via the group webhook, but it can be lost
+            # (manual cleanup, or the post predates the staging system). If it
+            # is missing, the hilfen/public webhooks insert partial rows whose
+            # completeness check can never pass - the user-table write never
+            # happens, hilfen_message_id stays NULL, and every future sync
+            # re-sends duplicate sub-channel posts. Seeding the main part
+            # (keyed on telegram_message_id, setting only user_id +
+            # group_message_id) heals that; on conflict it never touches the
+            # hilfen/public columns.
+            if user.group_message_id:
+                await self.stage_repo.upsert_user_mapping(
+                    telegram_message_id=int(user.telegram_message_id),
+                    user_id=user_id,
+                    group_message_id=int(user.group_message_id),
+                )
+                # Commit before Stage 2 sends any sub-channel post: the
+                # webhook completeness check runs at arrival time, so a later
+                # seed cannot retroactively complete an already-failed
+                # handshake.
+                await self.db.commit()
+            else:
+                # Only manual DB edits can produce this state (the code always
+                # writes telegram_message_id and group_message_id together).
+                # Auto-healing would require deleting/re-sending the main
+                # post, so instead surface it loudly for manual correction.
+                logger.error(
+                    f"User {user_id} has telegram_message_id but no "
+                    f"group_message_id; staging row cannot be seeded and "
+                    f"sub-channel handshakes will fail until fixed manually."
+                )
             
             # Edit caption only if the user profile was modified after the last channel update
             if (
@@ -359,7 +394,7 @@ class UpdateChannelPostService:
     async def _send_user_post_in_hilfen_channel(self, telegram_message_id: int) -> bool:
         payload = {
             "chat_id": settings.HILFEN_CHANNEL_ID,
-            "text": "❗️مشتری جدید\nستاره ها : « ⭐️⭐️⭐️⭐️⭐️ »\nتعداد کنسلی ❌❌❌❌❌",
+            "text": "ستاره ها : « ⭐️⭐️⭐️⭐️⭐️ »",
             "reply_parameters": {
                 "message_id": telegram_message_id,
                 "chat_id": settings.MAIN_CHANNEL_ID
