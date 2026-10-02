@@ -8,8 +8,17 @@ Pure functions, so no database is involved.
 import unittest
 from datetime import datetime, timedelta, timezone
 
+from pydantic import ValidationError
+
 from app.core.exceptions import ServiceError
 from app.models.service import ServiceStatus
+from app.modules.admin.service_management.schemas.list_services import ServiceListQuery
+from app.modules.services.schemas.service_requests import (
+    ServiceAggregateSaveRequest,
+    ServiceCreateRequest,
+    ServiceUpdateRequest,
+    TriStateFilter,
+)
 from app.modules.services.validation import (
     truncate_to_millis,
     updated_at_conflicts,
@@ -114,6 +123,8 @@ class InactiveCategoryTests(unittest.TestCase):
 
 class OptimisticConcurrencyTests(unittest.TestCase):
     def test_no_token_means_no_optimistic_check(self):
+        # Internal callers may omit the token; the row lock still serialises
+        # them. The HTTP endpoint itself now requires one (see the schema tests).
         now = datetime.now(timezone.utc)
         self.assertFalse(updated_at_conflicts(now, None))
 
@@ -140,6 +151,128 @@ class OptimisticConcurrencyTests(unittest.TestCase):
             ),
             datetime(2026, 1, 1, 0, 0, 0, 123000, tzinfo=timezone.utc),
         )
+
+
+class TriStateRelevanceTests(unittest.TestCase):
+    """
+    The four Iranian/Persian signals are tri-state: True = explicitly yes,
+    False = explicitly no, None = not assessed. Unknown must survive as None and
+    must never be silently treated as False.
+    """
+
+    FIELDS = (
+        "persian_owned",
+        "persian_provider",
+        "persian_language",
+        "persian_service",
+    )
+
+    def _create(self, **overrides):
+        return ServiceCreateRequest(name="Praxis", **overrides)
+
+    def test_create_defaults_every_signal_to_unknown(self):
+        created = self._create()
+        for field in self.FIELDS:
+            with self.subTest(field=field):
+                self.assertIsNone(getattr(created, field))
+
+    def test_every_signal_accepts_all_three_states(self):
+        for field in self.FIELDS:
+            for value in (True, False, None):
+                with self.subTest(field=field, value=value):
+                    created = self._create(**{field: value})
+                    self.assertEqual(getattr(created, field), value)
+
+    def test_provider_is_independent_of_owner(self):
+        # The motivating case: a German-owned clinic with an Iranian dentist.
+        created = self._create(persian_owned=False, persian_provider=True)
+        self.assertFalse(created.persian_owned)
+        self.assertTrue(created.persian_provider)
+
+    def test_signals_are_independent_of_each_other(self):
+        created = self._create(
+            persian_owned=True,
+            persian_provider=False,
+            persian_language=True,
+            persian_service=None,
+        )
+        self.assertTrue(created.persian_owned)
+        self.assertFalse(created.persian_provider)
+        self.assertTrue(created.persian_language)
+        self.assertIsNone(created.persian_service)
+
+    def test_partial_update_absent_key_means_untouched(self):
+        update = ServiceUpdateRequest(relevance={"persian_language": True})
+        dumped = update.model_dump(exclude_unset=True)
+        # Only the key that was actually sent survives, so the update cannot
+        # wipe the other three back to unknown.
+        self.assertEqual(list(dumped["relevance"]), ["persian_language"])
+
+    def test_partial_update_explicit_null_means_unknown(self):
+        update = ServiceUpdateRequest(
+            relevance={"persian_owned": False, "persian_service": None}
+        )
+        dumped = update.model_dump(exclude_unset=True)
+        self.assertIs(dumped["relevance"]["persian_owned"], False)
+        self.assertIn("persian_service", dumped["relevance"])
+        self.assertIsNone(dumped["relevance"]["persian_service"])
+
+
+class LocationScopeTests(unittest.TestCase):
+    """Germany is the scope; `state` is the Bundesland and defaults sensibly."""
+
+    def test_country_defaults_to_germany(self):
+        self.assertEqual(ServiceCreateRequest(name="Praxis").country, "Germany")
+
+    def test_country_can_still_be_overridden(self):
+        created = ServiceCreateRequest(name="Praxis", country="Deutschland")
+        self.assertEqual(created.country, "Deutschland")
+
+    def test_state_is_accepted(self):
+        created = ServiceCreateRequest(name="Praxis", state="Hessen")
+        self.assertEqual(created.state, "Hessen")
+
+    def test_state_defaults_to_none(self):
+        self.assertIsNone(ServiceCreateRequest(name="Praxis").state)
+
+
+class AggregateConcurrencyTokenTests(unittest.TestCase):
+    def test_expected_updated_at_is_required(self):
+        with self.assertRaises(ValidationError) as ctx:
+            ServiceAggregateSaveRequest(name="Praxis")
+        self.assertIn("expected_updated_at", str(ctx.exception))
+
+    def test_expected_updated_at_parses_an_iso_string(self):
+        request = ServiceAggregateSaveRequest(
+            name="Praxis", expected_updated_at="2026-01-01T12:00:00.123Z"
+        )
+        self.assertIsInstance(request.expected_updated_at, datetime)
+        self.assertEqual(
+            truncate_to_millis(request.expected_updated_at),
+            datetime(2026, 1, 1, 12, 0, 0, 123000, tzinfo=timezone.utc),
+        )
+
+    def test_expected_updated_at_rejects_garbage(self):
+        with self.assertRaises(ValidationError):
+            ServiceAggregateSaveRequest(name="Praxis", expected_updated_at="not-a-date")
+
+
+class TriStateFilterTests(unittest.TestCase):
+    """The admin filters must be able to select the unknown rows."""
+
+    def test_filter_values(self):
+        self.assertEqual(
+            {f.value for f in TriStateFilter}, {"yes", "no", "unknown"}
+        )
+
+    def test_filter_parses_from_query_string(self):
+        query = ServiceListQuery(persian_language="unknown", state="Hessen")
+        self.assertIs(query.persian_language, TriStateFilter.unknown)
+        self.assertEqual(query.state, "Hessen")
+
+    def test_filter_rejects_a_nonsense_value(self):
+        with self.assertRaises(ValidationError):
+            ServiceListQuery(persian_language="maybe")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ from sqlalchemy.orm import selectinload
 
 from app.models.service import Service
 from app.models.service_category import ServiceCategory
+from app.modules.services.repositories.filters import relevance_condition
+from app.modules.services.schemas.service_requests import TriStateFilter
 
 
 class ServiceRepository:
@@ -13,8 +15,15 @@ class ServiceRepository:
         self.db = db
 
     async def get(self, service_id: int) -> Optional[Service]:
+        # populate_existing forces the freshly read row to overwrite the
+        # instance already in the identity map. Without it, a read that follows
+        # a Core UPDATE inside the same transaction returns the pre-update
+        # values, because SQLAlchemy reuses the cached object and does not
+        # refresh it. That silently returned stale data to admin API responses.
         result = await self.db.execute(
-            select(Service).where(Service.id == service_id)
+            select(Service)
+            .where(Service.id == service_id)
+            .execution_options(populate_existing=True)
         )
         return result.scalars().first()
 
@@ -24,7 +33,10 @@ class ServiceRepository:
         service are serialised instead of interleaving their child writes.
         """
         result = await self.db.execute(
-            select(Service).where(Service.id == service_id).with_for_update()
+            select(Service)
+            .where(Service.id == service_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return result.scalars().first()
 
@@ -51,6 +63,9 @@ class ServiceRepository:
         stmt = (
             select(Service)
             .where(Service.id == service_id)
+            # See get(): refresh rather than reuse the cached instance, so a
+            # read after a write in the same transaction sees the new values.
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(Service.contacts),
                 selectinload(Service.category_links).selectinload(
@@ -95,11 +110,13 @@ class ServiceRepository:
         self,
         q: Optional[str] = None,
         city: Optional[str] = None,
+        state: Optional[str] = None,
         category_id: Optional[int] = None,
         status: Optional[str] = None,
-        persian_owned: Optional[bool] = None,
-        persian_language: Optional[bool] = None,
-        persian_service: Optional[bool] = None,
+        persian_owned: Optional[TriStateFilter] = None,
+        persian_provider: Optional[TriStateFilter] = None,
+        persian_language: Optional[TriStateFilter] = None,
+        persian_service: Optional[TriStateFilter] = None,
         owner_user_id: Optional[int] = None,
         page: int = 1,
         size: int = 20,
@@ -123,14 +140,21 @@ class ServiceRepository:
             )
         if city:
             conditions.append(Service.city.ilike(f"%{city.strip()}%"))
+        if state:
+            # Case-insensitive exact match on the Bundesland, so "hessen" and
+            # "Hessen" are the same filter rather than a substring coincidence.
+            conditions.append(func.lower(Service.state) == state.strip().lower())
         if status is not None:
             conditions.append(Service.status == status)
-        if persian_owned is not None:
-            conditions.append(Service.persian_owned == persian_owned)
-        if persian_language is not None:
-            conditions.append(Service.persian_language == persian_language)
-        if persian_service is not None:
-            conditions.append(Service.persian_service == persian_service)
+        for column, filter_value in (
+            (Service.persian_owned, persian_owned),
+            (Service.persian_provider, persian_provider),
+            (Service.persian_language, persian_language),
+            (Service.persian_service, persian_service),
+        ):
+            condition = relevance_condition(column, filter_value)
+            if condition is not None:
+                conditions.append(condition)
         if owner_user_id is not None:
             conditions.append(Service.owner_user_id == owner_user_id)
 

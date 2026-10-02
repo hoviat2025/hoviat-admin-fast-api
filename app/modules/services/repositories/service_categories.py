@@ -4,6 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.service import Service, ServiceStatus
 from app.models.service_category import ServiceCategory
 
 
@@ -20,6 +21,29 @@ class ServiceCategoryRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def published_services_with_primary(
+        self, category_id: int
+    ) -> Sequence[tuple[int, str]]:
+        """
+        Services that are published AND use this category as their primary one.
+
+        Used to refuse deactivating such a category: retiring it would leave
+        public pages pointing at a category the product says cannot be primary.
+        Returns (service_id, service_name) so the error can name them.
+        """
+        result = await self.db.execute(
+            select(Service.id, Service.name)
+            .join(
+                ServiceCategory,
+                (ServiceCategory.service_id == Service.id)
+                & (ServiceCategory.category_id == category_id)
+                & ServiceCategory.is_primary.is_(True),
+            )
+            .where(Service.status == ServiceStatus.published)
+            .order_by(Service.id)
+        )
+        return result.all()
 
     async def replace(self, service_id: int, links: list[dict]) -> None:
         """

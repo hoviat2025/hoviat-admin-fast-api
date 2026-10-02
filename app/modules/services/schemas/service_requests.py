@@ -1,10 +1,32 @@
-from datetime import datetime, timezone
+import enum
+from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.service import ServiceStatus
 from app.models.service_contact import ServiceContactType
+
+# This directory lists services located in Germany. Used as the admin default so
+# the field does not have to be typed every time, while remaining overridable.
+DEFAULT_COUNTRY = "Germany"
+
+
+class ServiceRelevanceUpdate(BaseModel):
+    """
+    Tri-state Iranian/Persian relevance values for a partial update.
+
+    Every field is optional so an admin can change one signal without restating
+    the others. A field that is present with a null value is an explicit "set to
+    unknown"; a field that is absent is left untouched.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    persian_owned: Optional[bool] = None
+    persian_provider: Optional[bool] = None
+    persian_language: Optional[bool] = None
+    persian_service: Optional[bool] = None
 
 
 class ServiceContactInput(BaseModel):
@@ -41,14 +63,21 @@ class ServiceCreateRequest(BaseModel):
     # An admin must opt in explicitly.
     show_owner: bool = False
 
-    persian_owned: bool = False
-    persian_language: bool = False
-    persian_service: bool = False
+    # Tri-state Iranian/Persian relevance. None means "not assessed", which is a
+    # genuinely different answer from False, so these default to None rather
+    # than False: a newly created listing should not claim to have been checked.
+    persian_owned: Optional[bool] = None
+    persian_provider: Optional[bool] = None
+    persian_language: Optional[bool] = None
+    persian_service: Optional[bool] = None
 
+    # Location. Scope is Germany, so `country` defaults to it; `state` is the
+    # Bundesland.
     address: Optional[str] = None
     postal_code: Optional[str] = None
     city: Optional[str] = None
-    country: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = Field(default=DEFAULT_COUNTRY)
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -65,6 +94,11 @@ class ServiceUpdateRequest(BaseModel):
     """
     Partial update of a service's own fields. Contacts and categories are
     managed by their own endpoints, so they are not accepted here.
+
+    Note that relevance fields use the `unset` sentinel: `None` cannot mean both
+    "not supplied" and "set to unknown", so an explicit tri-state change is made
+    by sending the field inside a `relevance` object rather than at the top
+    level. See ServiceRelevanceUpdate.
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -74,13 +108,15 @@ class ServiceUpdateRequest(BaseModel):
     owner_user_id: Optional[int] = None
     show_owner: Optional[bool] = None
 
-    persian_owned: Optional[bool] = None
-    persian_language: Optional[bool] = None
-    persian_service: Optional[bool] = None
+    # `relevance` carries the tri-state fields so that "set to unknown" is
+    # expressible in a partial update. A key present with a null value sets the
+    # column to unknown; an absent key leaves it untouched.
+    relevance: Optional[ServiceRelevanceUpdate] = None
 
     address: Optional[str] = None
     postal_code: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
     country: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -103,34 +139,23 @@ class ServiceAggregateSaveRequest(ServiceCreateRequest):
     """
     Full editable state of an existing service, applied in one transaction.
 
-    Same shape as create, plus an optional optimistic-concurrency token: the
+    Same shape as create, plus a REQUIRED optimistic-concurrency token: the
     `updated_at` the editor loaded. If the stored row has moved on since, the
     save is refused with 409 instead of overwriting someone else's work.
 
-    Omit `expected_updated_at` to skip the optimistic check; the row lock still
-    serialises writers.
+    The token is mandatory rather than optional on purpose. This endpoint
+    replaces the whole editable aggregate of a record other people may also be
+    editing, so a blind overwrite is the failure mode worth designing out; the
+    row lock still serialises writers, but it cannot tell a legitimate save from
+    a stale one.
     """
 
-    expected_updated_at: Optional[str] = Field(
-        default=None,
+    expected_updated_at: datetime = Field(
         description=(
-            "The updated_at value the editor loaded. Supply it to detect a "
-            "concurrent change; omit to only rely on the row lock."
+            "The updated_at value the editor loaded, as returned by the service "
+            "read endpoints. Compared at millisecond precision."
         ),
     )
-
-    @field_validator("expected_updated_at")
-    @classmethod
-    def _parse_expected(cls, value: Optional[str]) -> Optional[datetime]:
-        if value is None or value == "":
-            return None
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            raise ValueError("expected_updated_at must be an ISO-8601 timestamp")
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed
 
 
 class ServiceContactsReplaceRequest(BaseModel):
@@ -147,20 +172,40 @@ class ServiceCategoriesReplaceRequest(BaseModel):
     categories: List[ServiceCategoryInput] = []
 
 
+class TriStateFilter(str, enum.Enum):
+    """
+    Filter selector for a tri-state relevance column.
+
+    Unlike an optional boolean, this can express "only the records nobody has
+    assessed yet", which is a real data-quality question for curated imports.
+    """
+
+    yes = "yes"
+    no = "no"
+    unknown = "unknown"
+
+
 class ServiceSearchParams(BaseModel):
     """
     Optional, AND-ed filters for the admin listing today, and the basis of the
-    public service search in a later milestone. Kept deliberately small for now.
+    public service search in a later milestone.
+
+    Location (state, city) and the four Iranian/Persian relevance signals are
+    separate dimensions on purpose: "restaurants in Hessen with a Persian
+    service" combines a German location with a relevance attribute, and must
+    never be expressed as one geographic axis.
     """
     model_config = ConfigDict(extra="ignore")
 
     q: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
     category_id: Optional[int] = None
     status: Optional[ServiceStatus] = None
-    persian_owned: Optional[bool] = None
-    persian_language: Optional[bool] = None
-    persian_service: Optional[bool] = None
+    persian_owned: Optional[TriStateFilter] = None
+    persian_provider: Optional[TriStateFilter] = None
+    persian_language: Optional[TriStateFilter] = None
+    persian_service: Optional[TriStateFilter] = None
 
     page: int = Field(default=1, ge=1)
     size: int = Field(default=20, ge=1, le=100)

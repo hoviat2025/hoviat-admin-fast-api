@@ -67,15 +67,36 @@ class Service(Base):
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
 
-    # Three independent Persian/Iranian relevance signals.
-    persian_owned = Column(Boolean, server_default="false", nullable=False)
-    persian_language = Column(Boolean, server_default="false", nullable=False)
-    persian_service = Column(Boolean, server_default="false", nullable=False)
+    # Four independent Iranian/Persian relevance signals.
+    #
+    # These describe WHO or WHAT a service is connected to. They say nothing
+    # about where the service is: this directory lists services located in
+    # Germany, and Iranian/Persian relevance is an attribute of the listing, not
+    # a geography. A service may have none of these set.
+    #
+    # Tri-state on purpose: True = explicitly yes, False = explicitly no,
+    # None = not assessed. Imported and curated data frequently does not know,
+    # and silently storing "unknown" as False would fabricate an answer and make
+    # the field useless for data-quality filtering later.
+    persian_owned = Column(Boolean, nullable=True)
+    # Whether the person actually providing the service is Iranian/Persian,
+    # which is independent of who owns the business.
+    persian_provider = Column(Boolean, nullable=True)
+    # Whether a customer can be served in Persian. Unrelated to origin.
+    persian_language = Column(Boolean, nullable=True)
+    # Whether the product/service itself is Iranian/Persian in nature.
+    persian_service = Column(Boolean, nullable=True)
 
     # Structured location (searchable), deliberately not a contact row.
+    #
+    # Scope is Germany: state is the German Bundesland (Hessen, Bayern, ...).
+    # It is modelled as plain text rather than a reference table so this stays
+    # an open field and does not lock the product to Germany forever.
     address = Column(Text, nullable=True)
     postal_code = Column(Text, nullable=True)
     city = Column(Text, nullable=True)
+    # First-level administrative area; in the German scope, the Bundesland.
+    state = Column(Text, nullable=True)
     country = Column(Text, nullable=True)
     latitude = Column(Double, nullable=True)
     longitude = Column(Double, nullable=True)

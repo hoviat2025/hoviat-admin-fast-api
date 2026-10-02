@@ -19,6 +19,7 @@ from app.modules.services.schemas.service_requests import (
     ServiceCategoriesReplaceRequest,
     ServiceContactsReplaceRequest,
     ServiceCreateRequest,
+    ServiceRelevanceUpdate,
     ServiceUpdateRequest,
 )
 from app.modules.services.schemas.service_responses import ServiceResponse
@@ -98,10 +99,25 @@ class AdminServiceManagementService:
         return hook
 
     async def _before_values(self, service_id: int, payload) -> dict:
+        """
+        Snapshot the current values of exactly the fields this payload touches,
+        so the audit row can record a real before/after diff.
+
+        The tri-state relevance fields arrive nested under `relevance`, so they
+        are flattened here; without this a relevance change made through a
+        partial update would be applied but never audited.
+        """
         current = await self.service_domain.get(service_id)
+
+        fields = set(payload.model_fields_set)
+        relevance = payload.model_fields_set & {"relevance"}
+        if relevance:
+            fields.discard("relevance")
+            fields |= set((payload.relevance or ServiceRelevanceUpdate()).model_fields_set)
+
         return {
-            field: getattr(current, field)
-            for field in payload.model_fields_set
+            field: getattr(current, field, None)
+            for field in fields
             if hasattr(current, field)
         }
 
@@ -141,42 +157,116 @@ class AdminServiceManagementService:
         The admin editor's save: the whole aggregate in one request, one
         transaction, one audit row.
 
-        The audit record summarises the aggregate change as a single action
+        The audit record describes the aggregate change as a single action
         rather than one row per field, because that is the unit the admin
-        actually performed.
+        actually performed. It carries the real before/after values: only fields
+        that actually changed appear, and contacts and categories are recorded as
+        compact before/after representations rather than row counts, so the trail
+        shows which specific contact or category changed without dumping every
+        row into it.
         """
         before = await self.service_domain.get(service_id)
+
+        async def hook(target_id: int) -> None:
+            after = await self.service_domain.get(target_id)
+            await self.audit.record_action(
+                admin_id=admin.id,
+                admin_username=admin.username,
+                action="service.save",
+                target_type="service",
+                target_id=target_id,
+                changes=self._aggregate_diff(before, after),
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
         return await self.service_domain.save_aggregate(
-            service_id,
-            payload,
-            before_commit=self._hook(
-                admin,
-                "service.save",
-                "service",
-                ip_address,
-                user_agent,
-                changes={
-                    "status": {"before": before.status.value, "after": payload.status.value},
-                    "owner_user_id": {
-                        "before": before.owner_user_id,
-                        "after": payload.owner_user_id,
-                    },
-                    "show_owner": {
-                        "before": before.show_owner,
-                        "after": payload.show_owner,
-                    },
-                    "contacts": {
-                        "before": len(before.contacts),
-                        "after": len(payload.contacts),
-                    },
-                    "categories": {
-                        "before": len(before.categories),
-                        "after": len(payload.categories),
-                    },
-                    "name": {"before": before.name, "after": payload.name},
-                },
-            ),
+            service_id, payload, before_commit=hook
         )
+
+    # Scalar fields whose value alone is meaningful in an audit trail.
+    _AUDITED_SCALARS = (
+        "name",
+        "description",
+        "status",
+        "owner_user_id",
+        "show_owner",
+        "persian_owned",
+        "persian_provider",
+        "persian_language",
+        "persian_service",
+        "address",
+        "postal_code",
+        "city",
+        "state",
+        "country",
+        "latitude",
+        "longitude",
+        "source",
+        "external_id",
+    )
+
+    def _aggregate_diff(self, before: ServiceResponse, after: ServiceResponse) -> dict:
+        """
+        Build a compact, meaningful before/after diff of the whole aggregate.
+
+        Scalars are compared by value, so an unchanged field never appears.
+        Children are compared as sorted lists of compact representations, so an
+        edit that keeps the same number of rows but changes one of them still
+        shows up.
+        """
+        changes: dict = {}
+
+        for field in self._AUDITED_SCALARS:
+            old = getattr(before, field, None)
+            new = getattr(after, field, None)
+            if old != new:
+                changes[field] = {"before": old, "after": new}
+
+        contacts_before = self._contacts_signature(before)
+        contacts_after = self._contacts_signature(after)
+        if contacts_before != contacts_after:
+            changes["contacts"] = {"before": contacts_before, "after": contacts_after}
+
+        categories_before = self._categories_signature(before)
+        categories_after = self._categories_signature(after)
+        if categories_before != categories_after:
+            changes["categories"] = {
+                "before": categories_before,
+                "after": categories_after,
+            }
+
+        return changes
+
+    @staticmethod
+    def _contacts_signature(service: ServiceResponse) -> list[dict]:
+        """
+        Compact per-contact representation, sorted so two equal collections
+        compare equal. `value` is included because a changed phone number is
+        exactly the kind of edit an audit trail exists to show.
+        """
+        rows = [
+            {
+                "type": contact.type.value,
+                "title": contact.title,
+                "value": contact.value,
+                "is_visible": contact.is_visible,
+            }
+            for contact in service.contacts
+        ]
+        return sorted(rows, key=lambda row: (row["type"], row["value"], row["title"]))
+
+    @staticmethod
+    def _categories_signature(service: ServiceResponse) -> list[dict]:
+        """
+        Compact per-category representation including which one is primary, since
+        a change of primary category is a meaningful editorial decision.
+        """
+        rows = [
+            {"category_id": link.category_id, "is_primary": link.is_primary}
+            for link in service.categories
+        ]
+        return sorted(rows, key=lambda row: row["category_id"])
 
     async def update_service(
         self,
@@ -281,9 +371,11 @@ class AdminServiceManagementService:
             q=query.q,
             status=query.status.value if query.status is not None else None,
             city=query.city,
+            state=query.state,
             owner_user_id=query.owner_user_id,
             category_id=query.category_id,
             persian_owned=query.persian_owned,
+            persian_provider=query.persian_provider,
             persian_language=query.persian_language,
             persian_service=query.persian_service,
             source=query.source,

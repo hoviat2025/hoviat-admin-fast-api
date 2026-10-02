@@ -19,6 +19,7 @@ from app.modules.services.schemas.service_requests import (
     ServiceContactsReplaceRequest,
     ServiceCreateRequest,
     ServiceUpdateRequest,
+    TriStateFilter,
 )
 from app.modules.services.schemas.service_responses import (
     ServiceCategoryResponse,
@@ -87,11 +88,13 @@ class ServiceService:
         self,
         q: Optional[str] = None,
         city: Optional[str] = None,
+        state: Optional[str] = None,
         category_id: Optional[int] = None,
         status: Optional[ServiceStatus] = None,
-        persian_owned: Optional[bool] = None,
-        persian_language: Optional[bool] = None,
-        persian_service: Optional[bool] = None,
+        persian_owned: Optional[TriStateFilter] = None,
+        persian_provider: Optional[TriStateFilter] = None,
+        persian_language: Optional[TriStateFilter] = None,
+        persian_service: Optional[TriStateFilter] = None,
         owner_user_id: Optional[int] = None,
         page: int = 1,
         size: int = 20,
@@ -99,9 +102,11 @@ class ServiceService:
         rows, total = await self.services.list(
             q=q,
             city=city,
+            state=state,
             category_id=category_id,
             status=status.value if status is not None else None,
             persian_owned=persian_owned,
+            persian_provider=persian_provider,
             persian_language=persian_language,
             persian_service=persian_service,
             owner_user_id=owner_user_id,
@@ -148,12 +153,17 @@ class ServiceService:
                 "description": clean_optional_text(payload.description),
                 "owner_user_id": payload.owner_user_id,
                 "show_owner": payload.show_owner,
+                # Tri-state: an unassessed signal stays null rather than
+                # defaulting to False, so the record does not claim to have
+                # been checked when nobody checked it.
                 "persian_owned": payload.persian_owned,
+                "persian_provider": payload.persian_provider,
                 "persian_language": payload.persian_language,
                 "persian_service": payload.persian_service,
                 "address": clean_optional_text(payload.address),
                 "postal_code": clean_optional_text(payload.postal_code),
                 "city": clean_optional_text(payload.city),
+                "state": clean_optional_text(payload.state),
                 "country": clean_optional_text(payload.country),
                 "latitude": latitude,
                 "longitude": longitude,
@@ -184,10 +194,25 @@ class ServiceService:
 
         data = payload.model_dump(exclude_unset=True)
 
+        # The tri-state relevance values arrive nested so that a partial update
+        # can say "set this one to unknown" (explicit null) while leaving the
+        # other three alone. exclude_unset recurses, so the nested dict holds
+        # exactly the keys the admin sent: absent = untouched, null = unknown.
+        relevance = data.pop("relevance", None)
+        if relevance is not None:
+            data.update(relevance)
+
         if "name" in data:
             data["name"] = require_non_empty(data["name"], "name")
 
-        for field in ("description", "address", "postal_code", "city", "country"):
+        for field in (
+            "description",
+            "address",
+            "postal_code",
+            "city",
+            "state",
+            "country",
+        ):
             if field in data:
                 data[field] = clean_optional_text(data[field])
 
@@ -238,7 +263,11 @@ class ServiceService:
         *,
         before_commit: Optional[BeforeCommit] = None,
     ) -> ServiceResponse:
-        service = await self.services.get(service_id)
+        # Lock the parent row for the same reason the aggregate save does:
+        # replacing children without holding the parent lock lets a concurrent
+        # aggregate save interleave, producing a service whose contacts and
+        # categories come from two different saves.
+        service = await self.services.get_for_update(service_id)
         if not service:
             raise ServiceError("SERVICE_NOT_FOUND", "Service not found", 404)
 
@@ -257,7 +286,9 @@ class ServiceService:
         *,
         before_commit: Optional[BeforeCommit] = None,
     ) -> ServiceResponse:
-        service = await self.services.get(service_id)
+        # Lock the parent before replacing children, so this cannot interleave with a
+        # concurrent aggregate save of the same service.
+        service = await self.services.get_for_update(service_id)
         if not service:
             raise ServiceError("SERVICE_NOT_FOUND", "Service not found", 404)
 
@@ -354,12 +385,16 @@ class ServiceService:
                 "description": clean_optional_text(payload.description),
                 "owner_user_id": payload.owner_user_id,
                 "show_owner": payload.show_owner,
+                # Tri-state relevance: None is a meaningful "not assessed" and
+                # is stored as null, not coerced to False.
                 "persian_owned": payload.persian_owned,
+                "persian_provider": payload.persian_provider,
                 "persian_language": payload.persian_language,
                 "persian_service": payload.persian_service,
                 "address": clean_optional_text(payload.address),
                 "postal_code": clean_optional_text(payload.postal_code),
                 "city": clean_optional_text(payload.city),
+                "state": clean_optional_text(payload.state),
                 "country": clean_optional_text(payload.country),
                 "latitude": latitude,
                 "longitude": longitude,
@@ -480,12 +515,16 @@ class ServiceService:
             show_owner=service.show_owner,
             name=service.name,
             description=service.description,
+            # Tri-state Iranian/Persian relevance. None means "not assessed"
+            # and must survive to the response instead of collapsing to False.
             persian_owned=service.persian_owned,
+            persian_provider=service.persian_provider,
             persian_language=service.persian_language,
             persian_service=service.persian_service,
             address=service.address,
             postal_code=service.postal_code,
             city=service.city,
+            state=service.state,
             country=service.country,
             latitude=service.latitude,
             longitude=service.longitude,

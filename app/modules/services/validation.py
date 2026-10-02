@@ -242,9 +242,13 @@ def updated_at_conflicts(
     """
     True when the stored row has moved on since the client loaded it.
 
-    `expected` is None when the caller did not supply one: no optimistic token
-    means the caller is not asking for conflict detection (the row lock alone
-    still serialises writers).
+    Both sides are truncated to milliseconds first: PostgreSQL stores
+    microseconds while a browser `Date` holds only milliseconds, so an exact
+    comparison would report a conflict on every save from the admin panel.
+
+    `expected` is None when no token was supplied. The aggregate save requires a
+    token, so that only happens for internal callers; it means the caller is not
+    asking for conflict detection, and the row lock still serialises writers.
     """
     if expected is None:
         return False

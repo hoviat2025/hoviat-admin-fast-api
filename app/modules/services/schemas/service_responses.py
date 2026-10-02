@@ -38,13 +38,19 @@ class ServiceResponse(BaseModel):
     name: str
     description: Optional[str] = None
 
-    persian_owned: bool
-    persian_language: bool
-    persian_service: bool
+    # Tri-state Iranian/Persian relevance: true = explicitly yes,
+    # false = explicitly no, null = not assessed. These describe the listing,
+    # not its location.
+    persian_owned: Optional[bool] = None
+    persian_provider: Optional[bool] = None
+    persian_language: Optional[bool] = None
+    persian_service: Optional[bool] = None
 
+    # Location; scope is Germany, so `state` is the Bundesland.
     address: Optional[str] = None
     postal_code: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
     country: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None

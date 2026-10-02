@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ServiceError
 from app.modules.services.repositories.category import CategoryRepository
+from app.modules.services.repositories.service_categories import (
+    ServiceCategoryRepository,
+)
 from app.modules.services.schemas.category_requests import (
     CategoryCreateRequest,
     CategoryUpdateRequest,
@@ -37,6 +40,9 @@ class CategoryService:
     def __init__(self, db: AsyncSession, repo: Optional[CategoryRepository] = None):
         self.db = db
         self.repo = repo or CategoryRepository(db)
+        # Needed to check that a category is not still the primary one for a
+        # published service before it is retired.
+        self.links = ServiceCategoryRepository(db)
 
     async def get(self, category_id: int) -> CategoryResponse:
         category = await self.repo.get(category_id)
@@ -136,6 +142,24 @@ class CategoryService:
 
         if "description" in data:
             data["description"] = clean_optional_text(data["description"])
+
+        # Retiring a category that is still the primary one for a published
+        # service would contradict the rule that a published service must have
+        # an active primary category. The services are deliberately NOT rewritten
+        # automatically: moving a public listing between categories is a decision
+        # an admin has to make.
+        if data.get("is_active") is False and category.is_active:
+            blocking = await self.links.published_services_with_primary(category_id)
+            if blocking:
+                names = ", ".join(f"#{sid} {name}" for sid, name in blocking[:5])
+                more = "" if len(blocking) <= 5 else f" (+{len(blocking) - 5} more)"
+                raise ServiceError(
+                    "CONFLICT_OCCURRED",
+                    "this category is the primary category of published "
+                    f"service(s) and cannot be deactivated: {names}{more}. "
+                    "Reassign those services to another primary category first.",
+                    409,
+                )
 
         if "parent_id" in data and data["parent_id"] is not None:
             parent_id = data["parent_id"]
