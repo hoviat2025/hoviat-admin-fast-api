@@ -61,6 +61,22 @@ class CategoryRepository:
         )
         return set(result.scalars().all())
 
+    async def activity_map(self, category_ids: Sequence[int]) -> dict[int, bool]:
+        """
+        id -> is_active for the requested categories.
+
+        Missing ids are simply absent from the mapping, so callers can treat
+        "not in the map" as "does not exist" without a second query.
+        """
+        if not category_ids:
+            return {}
+        result = await self.db.execute(
+            select(Category.id, Category.is_active).where(
+                Category.id.in_(list(category_ids))
+            )
+        )
+        return {row.id: row.is_active for row in result.all()}
+
     async def create(self, data: dict) -> Category:
         category = Category(**data)
         self.db.add(category)

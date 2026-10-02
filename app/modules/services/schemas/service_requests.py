@@ -1,6 +1,7 @@
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.service import ServiceStatus
 from app.models.service_contact import ServiceContactType
@@ -96,6 +97,40 @@ class ServiceStatusUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: ServiceStatus
+
+
+class ServiceAggregateSaveRequest(ServiceCreateRequest):
+    """
+    Full editable state of an existing service, applied in one transaction.
+
+    Same shape as create, plus an optional optimistic-concurrency token: the
+    `updated_at` the editor loaded. If the stored row has moved on since, the
+    save is refused with 409 instead of overwriting someone else's work.
+
+    Omit `expected_updated_at` to skip the optimistic check; the row lock still
+    serialises writers.
+    """
+
+    expected_updated_at: Optional[str] = Field(
+        default=None,
+        description=(
+            "The updated_at value the editor loaded. Supply it to detect a "
+            "concurrent change; omit to only rely on the row lock."
+        ),
+    )
+
+    @field_validator("expected_updated_at")
+    @classmethod
+    def _parse_expected(cls, value: Optional[str]) -> Optional[datetime]:
+        if value is None or value == "":
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("expected_updated_at must be an ISO-8601 timestamp")
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
 
 
 class ServiceContactsReplaceRequest(BaseModel):

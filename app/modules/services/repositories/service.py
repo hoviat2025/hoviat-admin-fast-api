@@ -18,6 +18,30 @@ class ServiceRepository:
         )
         return result.scalars().first()
 
+    async def get_for_update(self, service_id: int) -> Optional[Service]:
+        """
+        Fetch the row with SELECT ... FOR UPDATE, so two admins saving the same
+        service are serialised instead of interleaving their child writes.
+        """
+        result = await self.db.execute(
+            select(Service).where(Service.id == service_id).with_for_update()
+        )
+        return result.scalars().first()
+
+    async def touch(self, service_id: int) -> None:
+        """
+        Bump the service's updated_at explicitly.
+
+        Child-only mutations (contacts, categories) do not otherwise change the
+        parent row, so without this the service's updated_at would not move when
+        its aggregate changed and would stop being a usable version token.
+        """
+        await self.db.execute(
+            update(Service)
+            .where(Service.id == service_id)
+            .values(updated_at=func.now())
+        )
+
     async def get_full(self, service_id: int) -> Optional[Service]:
         """
         Fetch a service with its contacts and category links (and the category

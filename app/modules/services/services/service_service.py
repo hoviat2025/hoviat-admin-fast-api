@@ -14,6 +14,7 @@ from app.modules.services.repositories.service_categories import (
 )
 from app.modules.services.schemas.category_responses import CategorySummaryResponse
 from app.modules.services.schemas.service_requests import (
+    ServiceAggregateSaveRequest,
     ServiceCategoriesReplaceRequest,
     ServiceContactsReplaceRequest,
     ServiceCreateRequest,
@@ -28,6 +29,8 @@ from app.modules.services.validation import (
     clean_optional_text,
     require_non_empty,
     resolve_primary_category,
+    updated_at_conflicts,
+    validate_category_assignments,
     validate_category_selection,
     validate_contact_fields,
     validate_latitude,
@@ -124,9 +127,9 @@ class ServiceService:
         source, external_id = validate_provenance(payload.source, payload.external_id)
 
         pairs = self._pairs_from_input(payload.categories)
-        resolve_primary_category(pairs)
-        validate_category_selection(pairs, payload.status)
-        await self._ensure_categories_exist(pairs)
+        await self._validate_category_state(
+            pairs, service_id=None, resulting_status=payload.status
+        )
 
         if payload.owner_user_id is not None:
             await self._ensure_owner_exists(payload.owner_user_id)
@@ -242,6 +245,8 @@ class ServiceService:
         await self.contacts.replace(
             service_id, [self._contact_to_dict(item) for item in payload.contacts]
         )
+        # Child-only change: move the parent's updated_at (see save_aggregate).
+        await self.services.touch(service_id)
         await self._finish(before_commit, service_id)
         return await self.get(service_id)
 
@@ -257,15 +262,162 @@ class ServiceService:
             raise ServiceError("SERVICE_NOT_FOUND", "Service not found", 404)
 
         pairs = self._pairs_from_input(payload.categories)
-        resolve_primary_category(pairs)
-        validate_category_selection(pairs, service.status)
-        await self._ensure_categories_exist(pairs)
+        await self._validate_category_state(
+            pairs, service_id=service_id, resulting_status=service.status
+        )
 
         await self.category_links.replace(service_id, self._link_dicts(pairs))
+        # Child-only change: move the parent's updated_at so it keeps describing
+        # the aggregate and stays usable as a version token.
+        await self.services.touch(service_id)
+        await self._finish(before_commit, service_id)
+        return await self.get(service_id)
+
+    # ------------------------------------------------- aggregate save (admin)
+
+    async def save_aggregate(
+        self,
+        service_id: int,
+        payload: ServiceAggregateSaveRequest,
+        *,
+        before_commit: Optional[BeforeCommit] = None,
+    ) -> ServiceResponse:
+        """
+        Replace the complete editable state of an existing service in ONE
+        transaction.
+
+        This is what the admin editor uses. The previous flow issued four to five
+        separately committed requests, so a failure halfway left a service with
+        new contacts but old categories, or a new status with a stale primary
+        category. Everything below is validated first, then written, then
+        committed once.
+
+        Concurrency: the row is locked with SELECT ... FOR UPDATE, so two
+        concurrent saves serialise. On top of that, `expected_updated_at` gives
+        optimistic detection: if the row moved on since the editor loaded it, the
+        save is refused with 409 rather than silently overwriting the other admin.
+        """
+        # 1. Lock the row; this serialises concurrent writers.
+        service = await self.services.get_for_update(service_id)
+        if not service:
+            raise ServiceError("SERVICE_NOT_FOUND", "Service not found", 404)
+
+        # 2. Optimistic concurrency check against the editor's loaded version.
+        if updated_at_conflicts(service.updated_at, payload.expected_updated_at):
+            raise ServiceError(
+                "CONFLICT_OCCURRED",
+                "this service was changed by someone else; reload it before saving again",
+                409,
+            )
+
+        # 3. Validate the complete resulting state before touching anything.
+        name = require_non_empty(payload.name, "name")
+        validate_location_pair(payload.latitude, payload.longitude)
+        latitude = validate_latitude(payload.latitude)
+        longitude = validate_longitude(payload.longitude)
+        source, external_id = validate_provenance(
+            payload.source, payload.external_id
+        )
+
+        if payload.owner_user_id is not None:
+            await self._ensure_owner_exists(payload.owner_user_id)
+
+        if (
+            source is not None
+            and external_id is not None
+            and await self.services.exists_external(
+                source, external_id, exclude_service_id=service_id
+            )
+        ):
+            raise ServiceError(
+                "CONFLICT_OCCURRED",
+                "another service already uses this source and external_id",
+                409,
+            )
+
+        pairs = self._pairs_from_input(payload.categories)
+        await self._validate_category_state(
+            pairs, service_id=service_id, resulting_status=payload.status
+        )
+
+        # 4. Children first, parent last: the parent's updated_at must reflect
+        #    the final state of the aggregate.
+        await self.contacts.replace(
+            service_id, [self._contact_to_dict(item) for item in payload.contacts]
+        )
+        await self.category_links.replace(service_id, self._link_dicts(pairs))
+
+        await self.services.update(
+            service_id,
+            {
+                "name": name,
+                "description": clean_optional_text(payload.description),
+                "owner_user_id": payload.owner_user_id,
+                "show_owner": payload.show_owner,
+                "persian_owned": payload.persian_owned,
+                "persian_language": payload.persian_language,
+                "persian_service": payload.persian_service,
+                "address": clean_optional_text(payload.address),
+                "postal_code": clean_optional_text(payload.postal_code),
+                "city": clean_optional_text(payload.city),
+                "country": clean_optional_text(payload.country),
+                "latitude": latitude,
+                "longitude": longitude,
+                "status": payload.status,
+                "source": source,
+                "external_id": external_id,
+            },
+        )
+
         await self._finish(before_commit, service_id)
         return await self.get(service_id)
 
     # ------------------------------------------------------------- internals
+
+    async def _validate_category_state(
+        self,
+        pairs: Sequence[tuple[int, bool]],
+        *,
+        service_id: Optional[int],
+        resulting_status: ServiceStatus,
+    ) -> None:
+        """
+        Full category-rule check for a write: existence, at-most-one-primary,
+        publish requirements, and the retired (inactive) category rules.
+        """
+        resolve_primary_category(pairs)
+        validate_category_selection(pairs, resulting_status)
+
+        requested = [category_id for category_id, _ in pairs]
+        if not requested:
+            return
+
+        activity = await self.categories.activity_map(requested)
+        missing = set(requested) - set(activity)
+        if missing:
+            raise ServiceError(
+                "CATEGORY_NOT_FOUND",
+                "Unknown category id(s): "
+                + ", ".join(str(x) for x in sorted(missing)),
+                404,
+            )
+
+        currently_assigned: set[int] = set()
+        current_primary_id: Optional[int] = None
+        if service_id is not None:
+            links = await self.category_links.list_by_service(service_id)
+            currently_assigned = {link.category_id for link in links}
+            current_primary_id = next(
+                (link.category_id for link in links if link.is_primary), None
+            )
+
+        validate_category_assignments(
+            pairs,
+            active_by_id=activity,
+            currently_assigned=currently_assigned,
+            current_primary_id=current_primary_id,
+            status=resulting_status,
+        )
 
     async def _finish(
         self, before_commit: Optional[BeforeCommit], target_id: int

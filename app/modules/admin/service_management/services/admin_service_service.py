@@ -15,6 +15,7 @@ from app.modules.services.schemas.category_requests import (
 )
 from app.modules.services.schemas.category_responses import CategoryResponse
 from app.modules.services.schemas.service_requests import (
+    ServiceAggregateSaveRequest,
     ServiceCategoriesReplaceRequest,
     ServiceContactsReplaceRequest,
     ServiceCreateRequest,
@@ -127,6 +128,55 @@ class AdminServiceManagementService:
 
     async def get_service(self, service_id: int) -> ServiceResponse:
         return await self.service_domain.get(service_id)
+
+    async def save_service(
+        self,
+        service_id: int,
+        payload: ServiceAggregateSaveRequest,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        """
+        The admin editor's save: the whole aggregate in one request, one
+        transaction, one audit row.
+
+        The audit record summarises the aggregate change as a single action
+        rather than one row per field, because that is the unit the admin
+        actually performed.
+        """
+        before = await self.service_domain.get(service_id)
+        return await self.service_domain.save_aggregate(
+            service_id,
+            payload,
+            before_commit=self._hook(
+                admin,
+                "service.save",
+                "service",
+                ip_address,
+                user_agent,
+                changes={
+                    "status": {"before": before.status.value, "after": payload.status.value},
+                    "owner_user_id": {
+                        "before": before.owner_user_id,
+                        "after": payload.owner_user_id,
+                    },
+                    "show_owner": {
+                        "before": before.show_owner,
+                        "after": payload.show_owner,
+                    },
+                    "contacts": {
+                        "before": len(before.contacts),
+                        "after": len(payload.contacts),
+                    },
+                    "categories": {
+                        "before": len(before.categories),
+                        "after": len(payload.categories),
+                    },
+                    "name": {"before": before.name, "after": payload.name},
+                },
+            ),
+        )
 
     async def update_service(
         self,

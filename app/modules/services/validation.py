@@ -8,6 +8,7 @@ convention for business-rule failures.
 """
 
 import re
+from datetime import datetime
 from typing import Callable, Optional, Sequence
 
 from app.core.exceptions import ServiceError
@@ -156,6 +157,98 @@ def validate_category_selection(
             "a published service must mark exactly one category as primary",
             422,
         )
+
+
+def validate_category_assignments(
+    requested: Sequence[tuple[int, bool]],
+    *,
+    active_by_id: dict[int, bool],
+    currently_assigned: Optional[set[int]] = None,
+    current_primary_id: Optional[int] = None,
+    status: ServiceStatus = ServiceStatus.draft,
+) -> None:
+    """
+    Enforce the retired-category ("inactive") rules for a category assignment.
+
+    An inactive category is retired, not deleted: its history is still there and
+    a service that already points at it must not silently lose that link just
+    because someone deactivated the category. So:
+
+      * an inactive category cannot be *newly* assigned;
+      * an already-assigned inactive category may be kept, and may be removed;
+      * an inactive category cannot *newly become* the primary one;
+      * a published service must have an active primary category.
+
+    `currently_assigned` / `current_primary_id` describe the stored state before
+    this save, which is what distinguishes "keeping" from "newly assigning".
+    """
+    currently_assigned = currently_assigned or set()
+    primary_id = resolve_primary_category(requested)
+
+    for category_id, is_primary in requested:
+        if category_id not in active_by_id:
+            raise ServiceError(
+                "CATEGORY_NOT_FOUND",
+                f"Unknown category id: {category_id}",
+                404,
+            )
+
+        active = active_by_id[category_id]
+        already_assigned = category_id in currently_assigned
+
+        if not active and not already_assigned:
+            raise ServiceError(
+                "INVALID_INPUT",
+                "an inactive (retired) category cannot be newly assigned to a service",
+                422,
+            )
+
+        if is_primary and not active and category_id != current_primary_id:
+            raise ServiceError(
+                "INVALID_INPUT",
+                "an inactive (retired) category cannot newly become the primary category",
+                422,
+            )
+
+    if (
+        status == ServiceStatus.published
+        and primary_id is not None
+        and not active_by_id.get(primary_id, True)
+    ):
+        raise ServiceError(
+            "INVALID_INPUT",
+            "a published service must have an active primary category",
+            422,
+        )
+
+
+def truncate_to_millis(value: Optional[datetime]) -> Optional[datetime]:
+    """
+    Drop sub-millisecond precision from a timestamp.
+
+    PostgreSQL keeps microseconds while JavaScript `Date` keeps milliseconds, so
+    a value sent by the admin panel can never round-trip exactly. Comparing
+    millisecond-truncated values keeps optimistic locking usable from the browser
+    without a false conflict on every save.
+    """
+    if value is None:
+        return None
+    return value.replace(microsecond=(value.microsecond // 1000) * 1000)
+
+
+def updated_at_conflicts(
+    current: Optional[datetime], expected: Optional[datetime]
+) -> bool:
+    """
+    True when the stored row has moved on since the client loaded it.
+
+    `expected` is None when the caller did not supply one: no optimistic token
+    means the caller is not asking for conflict detection (the row lock alone
+    still serialises writers).
+    """
+    if expected is None:
+        return False
+    return truncate_to_millis(current) != truncate_to_millis(expected)
 
 
 def would_create_category_cycle(

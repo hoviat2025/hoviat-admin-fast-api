@@ -28,6 +28,7 @@ from app.modules.services.schemas.category_responses import (
     CategoryTreeResponse,
 )
 from app.modules.services.schemas.service_requests import (
+    ServiceAggregateSaveRequest,
     ServiceCategoriesReplaceRequest,
     ServiceContactsReplaceRequest,
     ServiceCreateRequest,
@@ -126,6 +127,32 @@ async def update_service(
 ):
     ip, ua = _client(request)
     result = await service.update_service(service_id, payload, admin, ip, ua)
+    return StandardResponse.success(data=result)
+
+
+@router.put(
+    "/services/{service_id}",
+    response_model=StandardResponse[ServiceResponse],
+    summary="Save a service's full editable aggregate atomically",
+    description=(
+        "Commits own fields, owner, show_owner, contacts and categories in a "
+        "single transaction, so a failure can never leave new contacts "
+        "attached to old categories. Pass the `updated_at` that was loaded as "
+        "`expected_updated_at` to detect a concurrent edit (409)."
+    ),
+    dependencies=[Depends(require_write_users_permission)],
+)
+async def save_service(
+    service_id: int,
+    payload: ServiceAggregateSaveRequest,
+    request: Request,
+    admin: Admin = Depends(require_write_users_permission),
+    service: AdminServiceManagementService = Depends(
+        get_admin_service_management_service
+    ),
+):
+    ip, ua = _client(request)
+    result = await service.save_service(service_id, payload, admin, ip, ua)
     return StandardResponse.success(data=result)
 
 

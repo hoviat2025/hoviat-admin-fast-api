@@ -227,6 +227,17 @@ async def _run(
             f"status={r.status_code}",
         )
 
+        # A retired category must not be newly assignable (approved rule), so
+        # create a separate still-active category for the assignment flow.
+        r = await client.post(
+            f"{PREFIX}/categories/",
+            headers=headers,
+            json={"name": "ZZ Test Active", "slug": "zz-test-active", "parent_id": root["id"]},
+        )
+        check("create active category", r.status_code == 200, f"status={r.status_code}")
+        active_cat = r.json()["data"]
+        created_category_ids.append(active_cat["id"])
+
         # ------------------------------------------------------------- services
         r = await client.post(
             f"{PREFIX}/services/",
@@ -261,13 +272,25 @@ async def _run(
             f"status={r.status_code}",
         )
 
-        # Assign two categories with one primary.
+        # A retired category cannot be newly assigned.
+        r = await client.put(
+            f"{PREFIX}/services/{sid}/categories",
+            headers=headers,
+            json={"categories": [{"category_id": child["id"], "is_primary": True}]},
+        )
+        check(
+            "assign retired category refused",
+            r.status_code in (400, 422),
+            f"status={r.status_code} body={r.text[:200]}",
+        )
+
+        # Assign two active categories with one primary.
         r = await client.put(
             f"{PREFIX}/services/{sid}/categories",
             headers=headers,
             json={
                 "categories": [
-                    {"category_id": child["id"], "is_primary": True},
+                    {"category_id": active_cat["id"], "is_primary": True},
                     {"category_id": seeded["bakery"], "is_primary": False},
                 ]
             },
@@ -283,7 +306,7 @@ async def _run(
             headers=headers,
             json={
                 "categories": [
-                    {"category_id": child["id"], "is_primary": True},
+                    {"category_id": active_cat["id"], "is_primary": True},
                     {"category_id": seeded["bakery"], "is_primary": True},
                 ]
             },
@@ -415,7 +438,7 @@ async def _run(
         check("search found the service", any(s["id"] == sid for s in body["data"]), f"total={body['meta']['total']}")
         check("meta has pagination", set(["total", "page", "size", "pages"]).issubset(body["meta"].keys()))
 
-        r = await client.get(f"{PREFIX}/services/", headers=headers, params={"category_id": child["id"]})
+        r = await client.get(f"{PREFIX}/services/", headers=headers, params={"category_id": active_cat["id"]})
         check("search by category", r.status_code == 200 and r.json()["meta"]["total"] >= 1, f"total={r.json()['meta']['total']}")
 
         # ----------------------------------------------------------- audit rows
