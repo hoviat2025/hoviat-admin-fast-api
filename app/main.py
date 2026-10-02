@@ -39,40 +39,58 @@ from app.core.database import get_db  # <-- Imported database dependency
 async def lifespan(app: FastAPI):
     # 1. Startup
     logger.info("🚀 Starting up...")
-    # Recovery must succeed before either worker can consume queue rows.
-    logger.info("Recovering abandoned queue jobs...")
-    await recover_orphaned_jobs()
+
+    # Local-development safety switch. When set, skip the queue workers and the
+    # startup recovery pass entirely: workers execute real jobs through
+    # UpdateChannelPostService, which publishes to the real Telegram channels
+    # using the configured bot tokens. Defaults to False, so production starts
+    # the workers exactly as before.
+    workers_disabled = settings.DISABLE_BACKGROUND_WORKERS
+    background_worker_task = None
+    vip_worker_task = None
+
+    if workers_disabled:
+        logger.warning(
+            "⚠️ Background queue workers and startup recovery are DISABLED "
+            "(DISABLE_BACKGROUND_WORKERS=true). No Telegram channel jobs will "
+            "be executed by this process."
+        )
+    else:
+        # Recovery must succeed before either worker can consume queue rows.
+        logger.info("Recovering abandoned queue jobs...")
+        await recover_orphaned_jobs()
+
+        # Launch both queue workers only after recovery has completed.
+        logger.info("⚙️ Initializing concurrent queue worker lanes...")
+        background_worker_task = asyncio.create_task(run_background_queue_worker())
+        vip_worker_task = asyncio.create_task(run_vip_queue_worker())
 
     storage_client.start()
-
-    # Launch both queue workers only after recovery has completed.
-    logger.info("⚙️ Initializing concurrent queue worker lanes...")
-    background_worker_task = asyncio.create_task(run_background_queue_worker())
-    vip_worker_task = asyncio.create_task(run_vip_queue_worker())
 
     yield # Application runs here
     
     # 2. Shutdown
     logger.info("🛑 Shutting down...")
-    
-    # Cancel both background worker loops and wait for them to cleanly stop
-    logger.info("🛑 Cancelling queue worker loops...")
-    background_worker_task.cancel()
-    vip_worker_task.cancel()
-    
-    # Cleanly await termination results of both tasks
-    results = await asyncio.gather(
-        background_worker_task,
-        vip_worker_task,
-        return_exceptions=True
-    )
-    
-    for i, res in enumerate(results):
-        lane_name = "Background Lane" if i == 0 else "VIP Lane"
-        if isinstance(res, asyncio.CancelledError):
-            logger.info(f"✅ {lane_name} stopped successfully.")
-        elif isinstance(res, Exception):
-            logger.error(f"❌ Error while shutting down {lane_name}: {res}")
+
+    if background_worker_task is not None and vip_worker_task is not None:
+        # Cancel both background worker loops and wait for them to cleanly stop
+        logger.info("🛑 Cancelling queue worker loops...")
+        background_worker_task.cancel()
+        vip_worker_task.cancel()
+        
+        # Cleanly await termination results of both tasks
+        results = await asyncio.gather(
+            background_worker_task,
+            vip_worker_task,
+            return_exceptions=True
+        )
+        
+        for i, res in enumerate(results):
+            lane_name = "Background Lane" if i == 0 else "VIP Lane"
+            if isinstance(res, asyncio.CancelledError):
+                logger.info(f"✅ {lane_name} stopped successfully.")
+            elif isinstance(res, Exception):
+                logger.error(f"❌ Error while shutting down {lane_name}: {res}")
 
     storage_client.stop()
 

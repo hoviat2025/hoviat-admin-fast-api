@@ -1,0 +1,347 @@
+from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.admin import Admin
+from app.models.service import ServiceStatus
+from app.modules.admin.audit.repository import AdminAuditRepository
+from app.modules.admin.service_management.repositories.service_admin_search import (
+    ServiceAdminSearchRepository,
+)
+from app.modules.admin.service_management.schemas.list_services import ServiceListQuery
+from app.modules.services.schemas.category_requests import (
+    CategoryCreateRequest,
+    CategoryUpdateRequest,
+)
+from app.modules.services.schemas.category_responses import CategoryResponse
+from app.modules.services.schemas.service_requests import (
+    ServiceCategoriesReplaceRequest,
+    ServiceContactsReplaceRequest,
+    ServiceCreateRequest,
+    ServiceUpdateRequest,
+)
+from app.modules.services.schemas.service_responses import ServiceResponse
+from app.modules.services.services.category_service import CategoryService
+from app.modules.services.services.service_service import ServiceService
+
+
+class AdminServiceManagementService:
+    """
+    Admin-facing orchestration over the service-directory domain.
+
+    It re-implements no domain rule. Every validation, the category cycle guard,
+    the primary-category check and the provenance uniqueness rule live in the
+    Milestone-1 ServiceService / CategoryService. This layer only adds the two
+    things specific to an admin operation:
+
+      1. Identity. Authentication and permissions are enforced by the router via
+         the shared get_current_admin / require_*_permission dependencies; no
+         admin identity is ever taken from the request body.
+      2. Audit. An audit row is written through the shared AdminAuditRepository
+         in the SAME transaction as the change, using the domain services'
+         before_commit hook.
+
+    Ownership stays descriptive data. It is recorded and displayed, but grants no
+    edit permission: only admins edit services in this milestone.
+    """
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.service_domain = ServiceService(db)
+        self.category_domain = CategoryService(db)
+        self.audit = AdminAuditRepository(db)
+        self.search = ServiceAdminSearchRepository(db)
+
+    # ------------------------------------------------------------------ audit
+
+    def _hook(
+        self,
+        admin: Admin,
+        action: str,
+        target_type: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        changes: Optional[dict] = None,
+        before_values: Optional[dict] = None,
+    ):
+        """
+        Build the before_commit callback handed to the domain service.
+
+        The callback receives the id of the row that was just written, so the
+        audit row can point at the real record even for a create. It only
+        flushes; the domain service commits afterwards, so the audit row and the
+        change land together or not at all.
+        """
+
+        async def hook(target_id: int) -> None:
+            recorded = changes
+            if before_values is not None:
+                after = await self.service_domain.get(target_id)
+                recorded = {
+                    field: {"before": old, "after": getattr(after, field, None)}
+                    for field, old in before_values.items()
+                    if old != getattr(after, field, None)
+                }
+
+            await self.audit.record_action(
+                admin_id=admin.id,
+                admin_username=admin.username,
+                action=action,
+                target_type=target_type,
+                target_id=target_id,
+                changes=recorded or {},
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
+        return hook
+
+    async def _before_values(self, service_id: int, payload) -> dict:
+        current = await self.service_domain.get(service_id)
+        return {
+            field: getattr(current, field)
+            for field in payload.model_fields_set
+            if hasattr(current, field)
+        }
+
+    # ---------------------------------------------------------------- services
+
+    async def create_service(
+        self,
+        payload: ServiceCreateRequest,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        return await self.service_domain.create(
+            payload,
+            before_commit=self._hook(
+                admin,
+                "service.create",
+                "service",
+                ip_address,
+                user_agent,
+                changes={"created": payload.model_dump(mode="json")},
+            ),
+        )
+
+    async def get_service(self, service_id: int) -> ServiceResponse:
+        return await self.service_domain.get(service_id)
+
+    async def update_service(
+        self,
+        service_id: int,
+        payload: ServiceUpdateRequest,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        before = await self._before_values(service_id, payload)
+        return await self.service_domain.update(
+            service_id,
+            payload,
+            before_commit=self._hook(
+                admin,
+                "service.update",
+                "service",
+                ip_address,
+                user_agent,
+                before_values=before,
+            ),
+        )
+
+    async def change_status(
+        self,
+        service_id: int,
+        status: ServiceStatus,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        before = await self.service_domain.get(service_id)
+        return await self.service_domain.update(
+            service_id,
+            ServiceUpdateRequest(status=status),
+            before_commit=self._hook(
+                admin,
+                "service.status_change",
+                "service",
+                ip_address,
+                user_agent,
+                changes={
+                    "status": {"before": before.status.value, "after": status.value}
+                },
+            ),
+        )
+
+    async def assign_owner(
+        self,
+        service_id: int,
+        owner_user_id: Optional[int],
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        before = await self.service_domain.get(service_id)
+        return await self.service_domain.update(
+            service_id,
+            ServiceUpdateRequest(owner_user_id=owner_user_id),
+            before_commit=self._hook(
+                admin,
+                "service.owner_change",
+                "service",
+                ip_address,
+                user_agent,
+                changes={
+                    "owner_user_id": {
+                        "before": before.owner_user_id,
+                        "after": owner_user_id,
+                    }
+                },
+            ),
+        )
+
+    async def set_show_owner(
+        self,
+        service_id: int,
+        show_owner: bool,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        before = await self.service_domain.get(service_id)
+        return await self.service_domain.update(
+            service_id,
+            ServiceUpdateRequest(show_owner=show_owner),
+            before_commit=self._hook(
+                admin,
+                "service.show_owner_change",
+                "service",
+                ip_address,
+                user_agent,
+                changes={
+                    "show_owner": {"before": before.show_owner, "after": show_owner}
+                },
+            ),
+        )
+
+    async def list_services(self, query: ServiceListQuery):
+        """Returns (rows, total) for the router to split into data/meta."""
+        return await self.search.search_services(
+            q=query.q,
+            status=query.status.value if query.status is not None else None,
+            city=query.city,
+            owner_user_id=query.owner_user_id,
+            category_id=query.category_id,
+            persian_owned=query.persian_owned,
+            persian_language=query.persian_language,
+            persian_service=query.persian_service,
+            source=query.source,
+            page=query.page,
+            size=query.size,
+        )
+
+    async def replace_contacts(
+        self,
+        service_id: int,
+        payload: ServiceContactsReplaceRequest,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        return await self.service_domain.replace_contacts(
+            service_id,
+            payload,
+            before_commit=self._hook(
+                admin,
+                "service.contacts_change",
+                "service",
+                ip_address,
+                user_agent,
+                changes={"contacts": payload.model_dump(mode="json")},
+            ),
+        )
+
+    async def replace_categories(
+        self,
+        service_id: int,
+        payload: ServiceCategoriesReplaceRequest,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        return await self.service_domain.replace_categories(
+            service_id,
+            payload,
+            before_commit=self._hook(
+                admin,
+                "service.categories_change",
+                "service",
+                ip_address,
+                user_agent,
+                changes={"categories": payload.model_dump(mode="json")},
+            ),
+        )
+
+    # ------------------------------------------------------------- categories
+
+    async def list_categories(self, include_inactive: bool = True):
+        return await self.category_domain.list(include_inactive=include_inactive)
+
+    async def get_category_tree(self, include_inactive: bool = True):
+        return await self.category_domain.tree(include_inactive=include_inactive)
+
+    async def create_category(
+        self,
+        payload: CategoryCreateRequest,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> CategoryResponse:
+        return await self.category_domain.create(
+            payload,
+            before_commit=self._hook(
+                admin,
+                "category.create",
+                "category",
+                ip_address,
+                user_agent,
+                changes={"created": payload.model_dump(mode="json")},
+            ),
+        )
+
+    async def update_category(
+        self,
+        category_id: int,
+        payload: CategoryUpdateRequest,
+        admin: Admin,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> CategoryResponse:
+        before = await self.category_domain.get(category_id)
+        before_values = {
+            field: getattr(before, field)
+            for field in payload.model_fields_set
+            if hasattr(before, field)
+        }
+
+        async def hook(target_id: int) -> None:
+            after = await self.category_domain.get(target_id)
+            await self.audit.record_action(
+                admin_id=admin.id,
+                admin_username=admin.username,
+                action="category.update",
+                target_type="category",
+                target_id=target_id,
+                changes={
+                    field: {"before": old, "after": getattr(after, field, None)}
+                    for field, old in before_values.items()
+                    if old != getattr(after, field, None)
+                },
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+
+        return await self.category_domain.update(
+            category_id, payload, before_commit=hook
+        )

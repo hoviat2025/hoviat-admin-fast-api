@@ -35,6 +35,43 @@ class AdminAuditRepository:
         await self.db.flush()
         return audit_log
 
+    async def record_action(
+        self,
+        *,
+        admin_id: int,
+        admin_username: str,
+        action: str,
+        target_type: str,
+        target_id: str | int,
+        changes: dict | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> AdminAuditLog:
+        """
+        Generic audit entry for any admin action.
+
+        Same table and conventions as record_user_update; this exists so other
+        admin features (services, categories) log through the existing audit
+        system instead of inventing a parallel one.
+
+        Only add/flush is performed. The caller owns the transaction, so the
+        audit row commits together with the change it describes.
+        """
+        audit_log = AdminAuditLog(
+            admin_id=admin_id,
+            admin_username=admin_username,
+            action=action,
+            target_type=target_type,
+            target_id=str(target_id),
+            changes=jsonable_encoder(changes or {}),
+            sync_channels=None,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        self.db.add(audit_log)
+        await self.db.flush()
+        return audit_log
+
     async def list_logs(
         self,
         *,

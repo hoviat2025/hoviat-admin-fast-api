@@ -16,6 +16,20 @@ class Settings(BaseSettings):
     # --- Application Environment ---
     # Defines the runtime environment (e.g., "dev", "prod", "test")
     APP_MODE: str = "dev"
+
+    # Local-development safety switch.
+    #
+    # When true, the process does not start the background/VIP queue workers and
+    # does not run the startup queue-recovery pass. Workers execute real jobs via
+    # UpdateChannelPostService, which posts to the real Telegram channels using
+    # the bot tokens in this file. Running them against a local copy of the
+    # database would therefore publish real messages, and any local write that
+    # enqueues a job (for example an admin editing a user, which enqueues a
+    # channel sync) would trigger it.
+    #
+    # Defaults to False so production behaviour is unchanged. Set it to true only
+    # in local .env files.
+    DISABLE_BACKGROUND_WORKERS: bool = False
     
     # Secret key used for cryptographic signing and security hashes
     SECRET_KEY: str

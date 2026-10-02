@@ -6,6 +6,7 @@ from app.modules.admin.users_management.router import router as users_management
 from app.modules.admin.auth.router import router as auth_router
 from app.modules.admin.audit.router import router as audit_router
 from app.modules.admin.statistics.router import router as statistics_router
+from app.modules.admin.service_management.router import router as service_management_router
 
 # The Main Admin Router
 router = APIRouter()
@@ -33,5 +34,13 @@ router.include_router(
     statistics_router,
     prefix="/statistics",
     tags=["Admin Statistics"],
+    dependencies=[Depends(get_current_admin)],
+)
+
+# 4. Service Directory Management (additive; existing admin sections unchanged)
+router.include_router(
+    service_management_router,
+    prefix="/service-management",
+    tags=["Admin Service Management"],
     dependencies=[Depends(get_current_admin)],
 )
