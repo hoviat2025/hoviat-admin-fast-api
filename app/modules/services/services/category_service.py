@@ -124,7 +124,18 @@ class CategoryService:
         *,
         before_commit: Optional[BeforeCommit] = None,
     ) -> CategoryResponse:
-        category = await self.repo.get(category_id)
+        # Lock the category row first. This is the other half of the shared lock
+        # that service writes take on the categories they depend on: because both
+        # sides hold the same row lock while deciding, a deactivation cannot
+        # commit between a service write's "this category is active" check and
+        # that write's commit. Whoever gets here second re-reads committed state
+        # and refuses.
+        #
+        # Ordering: this is the only row lock this transaction takes, and it is
+        # taken before the slug/parent lookups (which are plain reads). Service
+        # writes lock the service row first and category rows afterwards, in
+        # ascending id order, so no cycle can form.
+        category = await self.repo.get_for_update(category_id)
         if not category:
             raise ServiceError("CATEGORY_NOT_FOUND", "Category not found", 404)
 
@@ -148,6 +159,10 @@ class CategoryService:
         # an active primary category. The services are deliberately NOT rewritten
         # automatically: moving a public listing between categories is a decision
         # an admin has to make.
+        #
+        # The check runs while holding the category lock (see above) and against
+        # committed service rows, so a service that has just been published with
+        # this category as primary is visible here and blocks the deactivation.
         if data.get("is_active") is False and category.is_active:
             blocking = await self.links.published_services_with_primary(category_id)
             if blocking:

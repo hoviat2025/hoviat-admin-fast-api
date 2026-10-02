@@ -247,10 +247,18 @@ class ServiceService:
             data["external_id"] = external_id
 
         # Publishing requires categories; check against the ones already set.
+        # This goes through _validate_category_state rather than the count-only
+        # check, because publishing also requires the primary category to be
+        # active. Using the weaker check here would let a service whose primary
+        # category has been retired be published, bypassing the rule the
+        # aggregate save enforces. It also locks those category rows, so a
+        # concurrent deactivation cannot slip between this check and the commit.
         if "status" in data and data["status"] is not None:
             links = await self.category_links.list_by_service(service_id)
             pairs = [(link.category_id, link.is_primary) for link in links]
-            validate_category_selection(pairs, data["status"])
+            await self._validate_category_state(
+                pairs, service_id=service_id, resulting_status=data["status"]
+            )
 
         await self.services.update(service_id, data)
         await self._finish(before_commit, service_id)
@@ -419,6 +427,12 @@ class ServiceService:
         """
         Full category-rule check for a write: existence, at-most-one-primary,
         publish requirements, and the retired (inactive) category rules.
+
+        The categories involved are read under an exclusive row lock, which is
+        what makes "a published service must have an active primary category"
+        hold against a concurrent category deactivation: the deactivation path
+        locks the same rows before deciding, so the two operations serialise and
+        the one that loses re-reads committed state and refuses.
         """
         resolve_primary_category(pairs)
         validate_category_selection(pairs, resulting_status)
@@ -427,7 +441,7 @@ class ServiceService:
         if not requested:
             return
 
-        activity = await self.categories.activity_map(requested)
+        activity = await self.categories.locked_activity_map(requested)
         missing = set(requested) - set(activity)
         if missing:
             raise ServiceError(

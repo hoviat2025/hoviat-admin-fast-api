@@ -77,6 +77,47 @@ class CategoryRepository:
         )
         return {row.id: row.is_active for row in result.all()}
 
+    async def get_for_update(self, category_id: int) -> Optional[Category]:
+        """
+        Fetch one category with SELECT ... FOR UPDATE.
+
+        Used by the category write paths so that a change to a category cannot
+        interleave with a service write that relies on that category.
+        """
+        result = await self.db.execute(
+            select(Category)
+            .where(Category.id == category_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalars().first()
+
+    async def locked_activity_map(self, category_ids: Sequence[int]) -> dict[int, bool]:
+        """
+        id -> is_active, read while holding an exclusive row lock on every
+        requested category.
+
+        This is the shared lock between the two sides of the
+        "a published service must have an active primary category" rule. A
+        service write locks the categories it depends on and then decides; a
+        category deactivation locks the same row and then decides. Because both
+        sides need the same row lock, they serialise, and the loser re-reads
+        committed state after the winner commits and fails accordingly.
+
+        Rows are locked ONE AT A TIME in ascending id order. Locking them in a
+        single `IN (...)` statement would leave the acquisition order up to the
+        query planner, which is a classic source of deadlocks when two
+        transactions reference the same set of categories in different orders.
+        A service has only a handful of categories, so the extra round trips are
+        not worth the risk.
+        """
+        activity: dict[int, bool] = {}
+        for category_id in sorted(set(category_ids)):
+            category = await self.get_for_update(category_id)
+            if category is not None:
+                activity[category.id] = category.is_active
+        return activity
+
     async def create(self, data: dict) -> Category:
         category = Category(**data)
         self.db.add(category)
