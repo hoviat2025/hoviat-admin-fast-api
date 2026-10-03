@@ -51,7 +51,7 @@ class ServiceResponse(BaseModel):
     postal_code: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    country: Optional[str] = None
+    country_code: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 

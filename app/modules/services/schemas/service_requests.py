@@ -2,14 +2,16 @@ import enum
 from datetime import datetime
 from typing import List, Optional
 
+from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.service import ServiceStatus
 from app.models.service_contact import ServiceContactType
 
-# This directory lists services located in Germany. Used as the admin default so
-# the field does not have to be typed every time, while remaining overridable.
-DEFAULT_COUNTRY = "Germany"
+# The directory is presented Germany-first, so DE is the default the admin sees.
+# It is a presentation default, NOT a domain rule: any ISO-3166-1 alpha-2 code is
+# accepted, and nothing in the model or validation requires DE.
+DEFAULT_COUNTRY_CODE = "DE"
 
 
 class ServiceRelevanceUpdate(BaseModel):
@@ -71,13 +73,14 @@ class ServiceCreateRequest(BaseModel):
     persian_language: Optional[bool] = None
     persian_service: Optional[bool] = None
 
-    # Location. Scope is Germany, so `country` defaults to it; `state` is the
-    # Bundesland.
+    # Location. `state` is the generic first-level administrative region (a
+    # Bundesland in Germany); `country_code` is an ISO-3166-1 alpha-2 code and is
+    # not restricted to Germany.
     address: Optional[str] = None
     postal_code: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    country: Optional[str] = Field(default=DEFAULT_COUNTRY)
+    country_code: Optional[str] = Field(default=DEFAULT_COUNTRY_CODE)
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -117,7 +120,7 @@ class ServiceUpdateRequest(BaseModel):
     postal_code: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    country: Optional[str] = None
+    country_code: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -185,27 +188,84 @@ class TriStateFilter(str, enum.Enum):
     unknown = "unknown"
 
 
-class ServiceSearchParams(BaseModel):
+class PublicServiceSearchParams(BaseModel):
     """
-    Optional, AND-ed filters for the admin listing today, and the basis of the
-    public service search in a later milestone.
+    Curated public search surface.
 
-    Location (state, city) and the four Iranian/Persian relevance signals are
-    separate dimensions on purpose: "restaurants in Hessen with a Persian
-    service" combines a German location with a relevance attribute, and must
-    never be expressed as one geographic axis.
+    Intentionally small. The shared query engine can do far more (ranges, IN
+    lists, free-text containment on individual fields), but a public endpoint
+    wants a stable, obvious vocabulary that a normal person can put in a URL
+    bar. Every parameter here is AND-ed.
+
+    `extra="forbid"` is load-bearing: an unknown parameter is an error, not a
+    silently ignored no-op, so a client that misspells a filter finds out
+    instead of receiving unfiltered results.
+
+    The endpoint always returns published services only. It does NOT pin a
+    country: the caller chooses, and the Germany-first frontend simply passes
+    `country_code=DE`.
     """
-    model_config = ConfigDict(extra="ignore")
 
-    q: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    category_id: Optional[int] = None
-    status: Optional[ServiceStatus] = None
+    model_config = ConfigDict(extra="forbid")
+
+    q: Optional[str] = Field(
+        default=None,
+        description="Free text across name, description, city, state, category name and slug.",
+    )
+    country_code: Optional[str] = Field(
+        default=None, description="ISO-3166-1 alpha-2 code, e.g. DE."
+    )
+    state: Optional[str] = Field(
+        default=None, description="First-level region, canonical spelling (Bundesland for DE)."
+    )
+    city: Optional[str] = Field(default=None, description="Exact city name, case-insensitive.")
+    # Declared with Query() rather than as a bare List field. FastAPI does NOT
+    # bind a List field on a `Depends()` model from the query string at all: it
+    # arrives empty, silently, so `?category=5` would be ignored rather than
+    # applied. Query() makes it a real query parameter, and the list form means
+    # a client can repeat it (?category=5&category=6).
+    category: Optional[List[int]] = Query(
+        default=None,
+        description="Category id(s). Repeat the parameter for several. ANY semantics: a service matching any of them is returned. A parent id also matches its descendants.",
+    )
     persian_owned: Optional[TriStateFilter] = None
     persian_provider: Optional[TriStateFilter] = None
     persian_language: Optional[TriStateFilter] = None
     persian_service: Optional[TriStateFilter] = None
+    sort: str = Field(default="newest", description="One of: newest, oldest, name_asc, name_desc, recently_updated.")
+    page: int = Field(default=1, ge=1)
+    size: int = Field(default=20, ge=1, le=100)
 
+
+class AdminServiceSearchParams(BaseModel):
+    """
+    Admin search surface. Richer than the public one, and deliberately not the
+    same contract: admins legitimately need provenance, owner, any status and
+    containment search. Both surfaces compile through the same shared engine, so
+    the richer admin capability cannot drift away from the public one.
+
+    `extra="forbid"` for the same reason as the public surface.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    q: Optional[str] = None
+    status: Optional[ServiceStatus] = None
+    country_code: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    postal_code: Optional[str] = None
+    category_id: Optional[int] = None
+    category_ids: Optional[List[int]] = None
+    category_primary_only: bool = False
+    owner_user_id: Optional[int] = None
+    source: Optional[str] = None
+    external_id: Optional[str] = None
+    name: Optional[str] = None
+    persian_owned: Optional[TriStateFilter] = None
+    persian_provider: Optional[TriStateFilter] = None
+    persian_language: Optional[TriStateFilter] = None
+    persian_service: Optional[TriStateFilter] = None
+    sort: str = "newest"
     page: int = Field(default=1, ge=1)
     size: int = Field(default=20, ge=1, le=100)

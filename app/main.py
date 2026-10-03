@@ -23,6 +23,7 @@ from app.modules.admin.router import router as admin_router
 from app.modules.eurobot.router import router as eurobot_router
 from app.modules.hilfen.router import router as hilfen_router
 from app.modules.sns.router import router as sns_router
+from app.modules.services.public.router import router as public_services_router
 
 from app.shared.clients.storage import storage_client
 # Import queue startup recovery and the two worker lane runners
@@ -129,6 +130,16 @@ if mode == "sns" or mode == "all":
         sns_router,
         prefix="/api/sns",
         tags=["SNS Module"]
+    )
+
+if mode == "admin" or mode == "all":
+    # Public service discovery. Unauthenticated by design, mounted separately
+    # from /api/admin so the admin permission guards cannot leak into it and the
+    # public surface stays obviously distinct in the API docs.
+    app.include_router(
+        public_services_router,
+        prefix="/api/services",
+        tags=["Public Service Discovery"],
     )
 
 @app.get("/health")

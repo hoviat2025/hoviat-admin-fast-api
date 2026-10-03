@@ -7,12 +7,20 @@ from app.models.user import User
 class UserFilter(Filter):
     """
     Comprehensive Filter for Users.
-    
+
     Supports:
     1. Exact Match: ?field=value
     2. Partial Match: ?field_contains=value (Case-insensitive)
     3. Null Check: ?no_field=true
     4. Ranges: ?min_score=10, ?joined_after_unix=...
+
+    Security note: the password hash is NOT filterable and NOT returned by the
+    response schema. It used to be exposed as both a response field and exact /
+    contains / null filters, which let an admin run LIKE probes against bcrypt
+    hashes. Nothing needs it, so it is removed rather than merely undocumented.
+
+    `Constants.ordering_allow_list` (below) additionally restricts `order_by` to
+    real, sortable columns.
     """
     model_config = ConfigDict(
         extra='ignore',       # Allow pagination params (page, size) to pass through
@@ -32,7 +40,6 @@ class UserFilter(Filter):
     phone_number: Optional[str] = None
     whatsapp_number: Optional[str] = None
     profile_path: Optional[str] = None
-    password: Optional[str] = None
     hilfen_data: Optional[str] = None
     hilfen_id_card_photo: Optional[str] = None
 
@@ -46,7 +53,6 @@ class UserFilter(Filter):
     whatsapp_number__ilike: Optional[str] = Field(default=None, alias="whatsapp_number_contains")
     profile_path__ilike: Optional[str] = Field(default=None, alias="profile_path_contains")
     accounting_code__ilike: Optional[str] = Field(default=None, alias="accounting_code_contains")
-    password__ilike: Optional[str] = Field(default=None, alias="password_contains")
     mode__ilike: Optional[str] = Field(default=None, alias="mode_contains")
     hilfen_data__ilike: Optional[str] = Field(default=None, alias="hilfen_data_contains")
     hilfen_id_card_photo__ilike: Optional[str] = Field(default=None, alias="hilfen_id_card_photo_contains")
@@ -149,7 +155,6 @@ class UserFilter(Filter):
     whatsapp_number__isnull: Optional[bool] = Field(default=None, alias="no_whatsapp_number")
     country__isnull: Optional[bool] = Field(default=None, alias="no_country")
 
-    password__isnull: Optional[bool] = Field(default=None, alias="no_password")
     mode__isnull: Optional[bool] = Field(default=None, alias="no_mode")
 
     join_date__isnull: Optional[bool] = Field(default=None, alias="no_join_date")
@@ -185,6 +190,57 @@ class UserFilter(Filter):
     class Constants(Filter.Constants):
         model = User
 
+    # The library's stock validation only checks `hasattr(model, field_name)`,
+    # which ANY class attribute satisfies. That let ?order_by=metadata pass
+    # validation and then raise AttributeError inside sort(), surfacing as an
+    # unhandled HTTP 500. This validator restricts ordering to real Column
+    # objects, so a non-column attribute is rejected as ordinary bad input.
+    #
+    # Declared on UserFilter (not inside Constants, which is not a Pydantic model)
+    # and with check_fields=False, because the library rewrites `order_by` to
+    # Optional[str] at request-parsing time and would otherwise reject the
+    # annotated list type.
+    @field_validator("order_by", mode="before", check_fields=False)
+    @classmethod
+    def _validate_order_by_columns(cls, value):
+        """
+        Runs before the library's own validator, on the raw input.
+
+        That matters: the library converts a comma-separated string into a list
+        in a `mode="after"` validator, so an "after" check would see one entry
+        like "-score,username" instead of two. Splitting here means each column
+        is checked individually.
+
+        Accepts a list or a comma-separated string, because a direct
+        UserFilter(...) call can supply either.
+        """
+        if not value:
+            return value
+
+        from sqlalchemy import Column
+        from sqlalchemy.orm.attributes import InstrumentedAttribute
+
+        if isinstance(value, str):
+            entries = [item.strip() for item in value.split(",") if item.strip()]
+        else:
+            entries = list(value)
+
+        for entry in entries:
+            name = entry.replace("-", "").replace("+", "")
+            attribute = getattr(User, name, None)
+            # A mapped column is an InstrumentedAttribute carrying a Column
+            # comparator; anything else on the class (MetaData, a relationship,
+            # a plain function) is not orderable.
+            comparator = getattr(attribute, "comparator", None)
+            is_column = (
+                isinstance(attribute, InstrumentedAttribute)
+                and comparator is not None
+                and isinstance(getattr(comparator, "__clause_element__", lambda: None)(), Column)
+            )
+            if not is_column:
+                raise ValueError(f"{entry} is not an orderable column.")
+        return value
+
     # ==========================================
     # 7. VALIDATORS
     # ==========================================
@@ -198,7 +254,6 @@ class UserFilter(Filter):
         "whatsapp_number__ilike",
         "profile_path__ilike",
         "accounting_code__ilike",
-        "password__ilike",
         "mode__ilike",
         "hilfen_status__ilike",
         "hilfen_command__ilike",

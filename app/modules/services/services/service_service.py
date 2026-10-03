@@ -8,6 +8,7 @@ from app.core.exceptions import ServiceError
 from app.models.service import Service, ServiceStatus
 from app.modules.services.repositories.category import CategoryRepository
 from app.modules.services.repositories.contacts import ServiceContactRepository
+from app.modules.services.repositories.country_state import CountryStateRepository
 from app.modules.services.repositories.service import ServiceRepository
 from app.modules.services.repositories.service_categories import (
     ServiceCategoryRepository,
@@ -39,6 +40,13 @@ from app.modules.services.validation import (
     validate_longitude,
     validate_provenance,
 )
+from app.modules.services.location import (
+    clean_city,
+    clean_postal_code,
+    clean_state,
+    normalise_country_code,
+    resolve_state,
+)
 from app.shared.repositories.user_base import UserBaseRepository
 
 # Invoked immediately before the transaction is committed, with the id of the
@@ -65,6 +73,10 @@ class ServiceService:
         self.contacts = ServiceContactRepository(db)
         self.category_links = ServiceCategoryRepository(db)
         self.users = UserBaseRepository(db)
+        # For canonicalising `state`. Germany has a vocabulary; countries
+        # without one pass their value through untouched.
+        self.country_states = CountryStateRepository(db)
+        self._vocab_cache: dict = {}
 
     # ------------------------------------------------------------------ reads
 
@@ -123,13 +135,11 @@ class ServiceService:
         *,
         before_commit: Optional[BeforeCommit] = None,
     ) -> ServiceResponse:
-        name = require_non_empty(payload.name, "name")
-
-        validate_location_pair(payload.latitude, payload.longitude)
-        latitude = validate_latitude(payload.latitude)
-        longitude = validate_longitude(payload.longitude)
-
-        source, external_id = validate_provenance(payload.source, payload.external_id)
+        # Build the column set first so validation failures happen before any
+        # write, and so create and aggregate save share one normalisation path.
+        data = await self._service_data(payload)
+        source = data["source"]
+        external_id = data["external_id"]
 
         pairs = self._pairs_from_input(payload.categories)
         await self._validate_category_state(
@@ -148,29 +158,7 @@ class ServiceService:
                 )
 
         service = await self.services.create(
-            {
-                "name": name,
-                "description": clean_optional_text(payload.description),
-                "owner_user_id": payload.owner_user_id,
-                "show_owner": payload.show_owner,
-                # Tri-state: an unassessed signal stays null rather than
-                # defaulting to False, so the record does not claim to have
-                # been checked when nobody checked it.
-                "persian_owned": payload.persian_owned,
-                "persian_provider": payload.persian_provider,
-                "persian_language": payload.persian_language,
-                "persian_service": payload.persian_service,
-                "address": clean_optional_text(payload.address),
-                "postal_code": clean_optional_text(payload.postal_code),
-                "city": clean_optional_text(payload.city),
-                "state": clean_optional_text(payload.state),
-                "country": clean_optional_text(payload.country),
-                "latitude": latitude,
-                "longitude": longitude,
-                "status": payload.status,
-                "source": source,
-                "external_id": external_id,
-            }
+            await self._service_data(payload)
         )
 
         await self.contacts.replace(
@@ -205,16 +193,24 @@ class ServiceService:
         if "name" in data:
             data["name"] = require_non_empty(data["name"], "name")
 
-        for field in (
-            "description",
-            "address",
-            "postal_code",
-            "city",
-            "state",
-            "country",
-        ):
+        for field in ("description", "address"):
             if field in data:
                 data[field] = clean_optional_text(data[field])
+
+        # Location is normalised as a SET, because `state` canonicalisation
+        # depends on `country_code`. Normalising each field independently would
+        # let a partial update clear the country and therefore skip the
+        # vocabulary check on a state it is changing.
+        if any(field in data for field in ("country_code", "state", "city", "postal_code")):
+            location = await self._normalise_location(
+                country_code=data.get("country_code", service.country_code),
+                state=data.get("state", service.state),
+                city=data.get("city", service.city),
+                postal_code=data.get("postal_code", service.postal_code),
+            )
+            for field, value in location.items():
+                if field in data or field == "country_code":
+                    data[field] = value
 
         # Coordinates must be validated as the resulting pair, not just the
         # supplied half.
@@ -350,13 +346,9 @@ class ServiceService:
             )
 
         # 3. Validate the complete resulting state before touching anything.
-        name = require_non_empty(payload.name, "name")
-        validate_location_pair(payload.latitude, payload.longitude)
-        latitude = validate_latitude(payload.latitude)
-        longitude = validate_longitude(payload.longitude)
-        source, external_id = validate_provenance(
-            payload.source, payload.external_id
-        )
+        data = await self._service_data(payload)
+        source = data["source"]
+        external_id = data["external_id"]
 
         if payload.owner_user_id is not None:
             await self._ensure_owner_exists(payload.owner_user_id)
@@ -387,29 +379,7 @@ class ServiceService:
         await self.category_links.replace(service_id, self._link_dicts(pairs))
 
         await self.services.update(
-            service_id,
-            {
-                "name": name,
-                "description": clean_optional_text(payload.description),
-                "owner_user_id": payload.owner_user_id,
-                "show_owner": payload.show_owner,
-                # Tri-state relevance: None is a meaningful "not assessed" and
-                # is stored as null, not coerced to False.
-                "persian_owned": payload.persian_owned,
-                "persian_provider": payload.persian_provider,
-                "persian_language": payload.persian_language,
-                "persian_service": payload.persian_service,
-                "address": clean_optional_text(payload.address),
-                "postal_code": clean_optional_text(payload.postal_code),
-                "city": clean_optional_text(payload.city),
-                "state": clean_optional_text(payload.state),
-                "country": clean_optional_text(payload.country),
-                "latitude": latitude,
-                "longitude": longitude,
-                "status": payload.status,
-                "source": source,
-                "external_id": external_id,
-            },
+            service_id, await self._service_data(payload)
         )
 
         await self._finish(before_commit, service_id)
@@ -518,6 +488,85 @@ class ServiceService:
                 404,
             )
 
+    async def _service_data(self, payload) -> dict:
+        """
+        Build the full column set for a create or an aggregate save.
+
+        Shared so both paths normalise location identically: it would be easy to
+        canonicalise a Bundesland on create and store raw text on save, which is
+        exactly the fragmentation the vocabulary exists to prevent.
+        """
+        validate_location_pair(payload.latitude, payload.longitude)
+        source, external_id = validate_provenance(payload.source, payload.external_id)
+
+        data = {
+            "name": require_non_empty(payload.name, "name"),
+            "description": clean_optional_text(payload.description),
+            "owner_user_id": payload.owner_user_id,
+            "show_owner": payload.show_owner,
+            # Tri-state: None means "not assessed" and is stored as null rather
+            # than coerced to False, so the row never claims to have been checked
+            # when nobody checked it.
+            "persian_owned": payload.persian_owned,
+            "persian_provider": payload.persian_provider,
+            "persian_language": payload.persian_language,
+            "persian_service": payload.persian_service,
+            "address": clean_optional_text(payload.address),
+            "latitude": validate_latitude(payload.latitude),
+            "longitude": validate_longitude(payload.longitude),
+            "status": payload.status,
+            "source": source,
+            "external_id": external_id,
+        }
+        data.update(
+            await self._normalise_location(
+                country_code=payload.country_code,
+                state=payload.state,
+                city=payload.city,
+                postal_code=payload.postal_code,
+            )
+        )
+        return data
+
+    async def _normalise_location(
+        self,
+        *,
+        country_code: Optional[str],
+        state: Optional[str],
+        city: Optional[str],
+        postal_code: Optional[str],
+    ) -> dict:
+        """
+        Canonicalise the structured location fields as a set.
+
+        country_code is structural (uppercase ISO alpha-2). state is canonicalised
+        against the country's vocabulary when one exists, and passed through as
+        trimmed text when it does not — which is what keeps a service in a country
+        we have no list for writable rather than rejected.
+        """
+        resolved_country = normalise_country_code(country_code)
+        if resolved_country is not None:
+            vocabulary = await self._vocabulary(resolved_country)
+        else:
+            vocabulary = None
+
+        return {
+            "country_code": resolved_country,
+            "state": resolve_state(
+                resolved_country, state, lambda code: vocabulary
+            ),
+            "city": clean_city(city),
+            "postal_code": clean_postal_code(postal_code),
+        }
+
+    async def _vocabulary(self, country_code: str):
+        """Per-instance vocabulary cache; a request touches a handful of codes."""
+        if country_code not in self._vocab_cache:
+            self._vocab_cache[country_code] = await self.country_states.vocabulary(
+                country_code
+            )
+        return self._vocab_cache[country_code]
+
     async def _ensure_owner_exists(self, user_id: int) -> None:
         if not await self.users.get_by_id(user_id):
             raise ServiceError("USER_NOT_FOUND", "Owner user not found", 404)
@@ -539,7 +588,7 @@ class ServiceService:
             postal_code=service.postal_code,
             city=service.city,
             state=service.state,
-            country=service.country,
+            country_code=service.country_code,
             latitude=service.latitude,
             longitude=service.longitude,
             status=service.status,

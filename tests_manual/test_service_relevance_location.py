@@ -1,9 +1,9 @@
-"""Database-backed checks for the location + tri-state relevance pass, and the
+﻿"""Database-backed checks for the location + tri-state relevance pass, and the
 hardening items that need real rows.
 
 Covers:
   * `state` (Bundesland) persisting through create / read / patch / aggregate save
-  * Germany as the default country
+  * country_code defaults to DE
   * all four relevance signals accepting true / false / null, independently
   * tri-state admin filters distinguishing yes / no / unknown
   * `expected_updated_at` being required, and a stale token returning 409
@@ -83,7 +83,7 @@ async def _run(headers: dict, admin_id: int, created: dict) -> None:
         sid = svc["id"]
         created["services"].append(sid)
 
-        check("country defaults to Germany", svc["country"] == "Germany", f"country={svc['country']}")
+        check("country_code defaults to DE", svc["country_code"] == "DE", f"country_code={svc['country_code']}")
         check("state defaults to empty", svc["state"] is None, f"state={svc['state']}")
         check(
             "relevance defaults to unknown",
@@ -145,7 +145,7 @@ async def _run(headers: dict, admin_id: int, created: dict) -> None:
                 "name": "ZZ Loc Saved",
                 "state": "Berlin",
                 "city": "Berlin",
-                "country": "Germany",
+                "country_code": "DE",
                 "persian_owned": True,
                 "persian_provider": None,
                 "persian_language": None,
@@ -328,7 +328,7 @@ async def _run(headers: dict, admin_id: int, created: dict) -> None:
                 "description": pub_body.get("description"),
                 "state": pub_body.get("state"),
                 "city": pub_body.get("city"),
-                "country": pub_body.get("country"),
+                "country_code": pub_body.get("country_code"),
                 "status": ServiceStatus.published.value,
                 "categories": [{"category_id": secondary["id"], "is_primary": True}],
                 "expected_updated_at": pub_body["updated_at"],
@@ -389,7 +389,7 @@ async def _run(headers: dict, admin_id: int, created: dict) -> None:
             )
             check(
                 "audit omits unchanged fields",
-                "country" not in changes and "updated_at" not in changes,
+                "country_code" not in changes and "updated_at" not in changes,
                 f"keys={sorted(changes)}",
             )
         check("audit added exactly one row", await _audit_count(audited["id"]) == before_audit + 1)

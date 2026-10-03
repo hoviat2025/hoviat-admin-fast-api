@@ -219,14 +219,21 @@ class TriStateRelevanceTests(unittest.TestCase):
 
 
 class LocationScopeTests(unittest.TestCase):
-    """Germany is the scope; `state` is the Bundesland and defaults sensibly."""
+    """
+    Location is international, presented Germany-first.
 
-    def test_country_defaults_to_germany(self):
-        self.assertEqual(ServiceCreateRequest(name="Praxis").country, "Germany")
+    `country_code` is the canonical ISO-3166-1 alpha-2 identifier; `DE` is only
+    the default the admin sees, not a domain rule.
+    """
 
-    def test_country_can_still_be_overridden(self):
-        created = ServiceCreateRequest(name="Praxis", country="Deutschland")
-        self.assertEqual(created.country, "Deutschland")
+    def test_country_code_defaults_to_de(self):
+        # Presentation default, not an invariant: see CountryCodeTests for the
+        # proof that other countries are equally valid.
+        self.assertEqual(ServiceCreateRequest(name="Praxis").country_code, "DE")
+
+    def test_country_code_can_be_overridden(self):
+        created = ServiceCreateRequest(name="Praxis", country_code="AT")
+        self.assertEqual(created.country_code, "AT")
 
     def test_state_is_accepted(self):
         created = ServiceCreateRequest(name="Praxis", state="Hessen")
@@ -234,6 +241,14 @@ class LocationScopeTests(unittest.TestCase):
 
     def test_state_defaults_to_none(self):
         self.assertIsNone(ServiceCreateRequest(name="Praxis").state)
+
+    def test_state_concept_is_not_germany_specific(self):
+        # The field is the generic "first-level administrative region"; only the
+        # stored vocabulary happens to be German for now.
+        created = ServiceCreateRequest(
+            name="Praxis", country_code="CH", state="Zürich"
+        )
+        self.assertEqual(created.state, "Zürich")
 
 
 class AggregateConcurrencyTokenTests(unittest.TestCase):

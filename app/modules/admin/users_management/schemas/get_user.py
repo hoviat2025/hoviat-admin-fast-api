@@ -25,9 +25,13 @@ class FullUserResponse(BaseModel):
     country: Optional[str] = None
     
     # Auth & Status
-    # Note: We return the hashed password string if it exists, usually not recommended for security 
-    # but requested to return "everything". Frontend should treat this carefully.
-    password: Optional[str] = None 
+    #
+    # The password hash is deliberately NOT part of this response. It was
+    # previously included "for completeness", which meant every admin list and
+    # detail request shipped bcrypt hashes to the browser, and made the hash
+    # queryable as a LIKE filter, which is a slow oracle. No workflow needs it:
+    # authentication reads the hash straight from the database, and password
+    # changes go through the auth endpoints rather than an admin read.
     mode: Optional[str] = None
     
     # Booleans

@@ -16,11 +16,11 @@ class UserSearchRepository(UserBaseRepository):
         page_size: int
     ) -> Tuple[List[User], int]:
         
-        # --- DEBUG LOG ---
-        # Useful to verify if exact match vs contains match is triggering correctly
-        print(f"DEBUG: Global Search: {search_query}")
-        print(f"DEBUG: Filter Dict: {user_filter.model_dump(exclude_unset=True)}")
-        # -----------------
+        # NOTE: this used to print the search term and the full filter dict to
+        # stdout on every request. That is not logging: it is unguarded, bypasses
+        # the app logger, is not level-gated, and writes admin query content into
+        # process output. Removed rather than converted, because nothing consumed
+        # it.
 
         stmt = select(User)
 

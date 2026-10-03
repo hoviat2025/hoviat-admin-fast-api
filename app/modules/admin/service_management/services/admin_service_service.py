@@ -199,7 +199,7 @@ class AdminServiceManagementService:
         "postal_code",
         "city",
         "state",
-        "country",
+        "country_code",
         "latitude",
         "longitude",
         "source",
@@ -367,21 +367,7 @@ class AdminServiceManagementService:
 
     async def list_services(self, query: ServiceListQuery):
         """Returns (rows, total) for the router to split into data/meta."""
-        return await self.search.search_services(
-            q=query.q,
-            status=query.status.value if query.status is not None else None,
-            city=query.city,
-            state=query.state,
-            owner_user_id=query.owner_user_id,
-            category_id=query.category_id,
-            persian_owned=query.persian_owned,
-            persian_provider=query.persian_provider,
-            persian_language=query.persian_language,
-            persian_service=query.persian_service,
-            source=query.source,
-            page=query.page,
-            size=query.size,
-        )
+        return await self.search.search_services(query.to_search_params())
 
     async def replace_contacts(
         self,

@@ -89,15 +89,23 @@ class Service(Base):
 
     # Structured location (searchable), deliberately not a contact row.
     #
-    # Scope is Germany: state is the German Bundesland (Hessen, Bayern, ...).
-    # It is modelled as plain text rather than a reference table so this stays
-    # an open field and does not lock the product to Germany forever.
+    # The directory is PRESENTED Germany-first, but the model is international:
+    # country_code is an ISO-3166-1 alpha-2 code and is deliberately not
+    # constrained to DE, so adding a country is data, not a migration.
+    #
+    # `state` is the generic concept "first-level administrative region": a
+    # Bundesland in Germany, a canton in Switzerland, a province in Canada. It is
+    # NOT renamed to anything Germany-specific. Where a country has a known
+    # vocabulary (currently only DE) the stored value is canonicalised on write;
+    # see CountryState.
     address = Column(Text, nullable=True)
     postal_code = Column(Text, nullable=True)
     city = Column(Text, nullable=True)
-    # First-level administrative area; in the German scope, the Bundesland.
+    # First-level administrative region. Canonical spelling when the country has
+    # a vocabulary; otherwise free text.
     state = Column(Text, nullable=True)
-    country = Column(Text, nullable=True)
+    # ISO-3166-1 alpha-2, uppercase. NULL means "not stated".
+    country_code = Column(Text, nullable=True)
     latitude = Column(Double, nullable=True)
     longitude = Column(Double, nullable=True)
 
