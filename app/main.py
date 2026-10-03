@@ -132,10 +132,16 @@ if mode == "sns" or mode == "all":
         tags=["SNS Module"]
     )
 
-if mode == "admin" or mode == "all":
+if mode in ("sns", "admin", "all"):
     # Public service discovery. Unauthenticated by design, mounted separately
     # from /api/admin so the admin permission guards cannot leak into it and the
     # public surface stays obviously distinct in the API docs.
+    #
+    # Mounted in the `sns` mode as well as `admin`/`all`: the consumers of this
+    # API are the public discovery surfaces, which run as the SNS/public process,
+    # and gating it on `admin` meant a deployment serving public discovery had no
+    # public service API at all. `admin` stays included so local and admin-only
+    # deployments keep the endpoints they already had.
     app.include_router(
         public_services_router,
         prefix="/api/services",

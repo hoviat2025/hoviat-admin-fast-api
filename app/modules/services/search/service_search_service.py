@@ -21,6 +21,10 @@ from sqlalchemy import exists, select
 
 from app.core.exceptions import ServiceError
 from app.models.service import Service as ServiceColumns
+from app.modules.services.public.projection import (
+    to_public_detail,
+    to_public_summary,
+)
 from app.modules.services.schemas.service_requests import (
     AdminServiceSearchParams,
     PublicServiceSearchParams,
@@ -60,9 +64,11 @@ _RELEVANCE_KEYS = (
 class ServiceSearchService:
     def __init__(self, db):
         self.db = db
-        # Row -> response conversion is the same code the write paths use, so a
-        # search result and a freshly saved record cannot serialise differently.
-        self._serialize = partial(ServiceService._to_response)
+        # Two separate serializers on purpose. The admin path must keep using the
+        # full record (provenance, owner ids, hidden contacts and retired
+        # categories are legitimate admin capabilities). The public path uses the
+        # projection in app.modules.services.public, which cannot emit those.
+        self._serialize_admin = partial(ServiceService._to_response)
 
     async def public_search(
         self, params: PublicServiceSearchParams
@@ -79,11 +85,18 @@ class ServiceSearchService:
         `country_code=DE`; a caller interested in Austria passes `AT`. Not
         defaulting here is deliberate: silently returning Germany when no country
         was asked for would hide a product rule inside the backend.
+
+        Retired categories are excluded from matching (`active_only=True`) and
+        from the projected response, so a category that an admin has retired
+        stops driving public discovery without any admin having to edit the
+        service.
         """
         builder = ServiceQueryBuilder(self.db, allow=PUBLIC_ALLOW).published_only()
 
         if params.q:
-            builder.text_search(params.q, extra_predicate=_category_text_search)
+            builder.text_search(
+                params.q, extra_predicate=partial(_category_text_search, active_only=True)
+            )
         if params.country_code:
             builder.filter("country_code", FilterOp.exact, params.country_code)
         if params.state:
@@ -96,13 +109,43 @@ class ServiceSearchService:
                 builder.filter(key, FilterOp.tristate, value.value)
         if params.category:
             # ANY semantics, and a parent id matches services tagged with any of
-            # its descendants.
-            builder.category_filter(params.category, include_descendants=True)
+            # its descendants. Active-only: a retired category must not match.
+            builder.category_filter(
+                params.category, include_descendants=True, active_only=True
+            )
 
         builder.sort(params.sort).paginate(params.page, params.size).eager_load()
 
         rows, total = await builder.execute()
-        return [self._serialize(None, row) for row in rows], total
+        return [to_public_summary(row) for row in rows], total
+
+    async def public_detail(self, service_id: int):
+        """
+        Fetch one published service for the public detail page.
+
+        Returns None for anything that is not publicly available: a draft,
+        hidden or archived record, or an id that does not exist. The caller maps
+        that to 404, so a non-published record is indistinguishable from a
+        missing one and its existence is not disclosed.
+        """
+        builder = (
+            ServiceQueryBuilder(self.db, allow=PUBLIC_ALLOW)
+            .published_only()
+            # `raw_condition`, not `filter("id", ...)`: "id" is deliberately not in
+            # PUBLIC_ALLOW, because it is not a search facet a caller should be
+            # able to sweep. Detail looks a record up by its own path parameter
+            # instead, which is the escape hatch's documented purpose. published_only()
+            # above is what keeps this from becoming a way to read a draft.
+            .raw_condition("id", ServiceColumns.id, "exact", service_id)
+            .eager_load()
+            .with_owner_privacy()
+        )
+        rows, _ = await builder.execute()
+        if not rows:
+            return None
+
+        service = rows[0]
+        return to_public_detail(service, privacy=_owner_privacy(service))
 
     async def admin_search(self, params: AdminServiceSearchParams) -> tuple:
         """
@@ -164,7 +207,23 @@ class ServiceSearchService:
         builder.sort(params.sort).paginate(params.page, params.size).eager_load()
 
         rows, total = await builder.execute()
-        return [self._serialize(None, row) for row in rows], total
+        return [self._serialize_admin(None, row) for row in rows], total
+
+
+def _owner_privacy(service):
+    """
+    The owning user's `UserPrivacySettings`, or None if they have no row.
+
+    The owner relation is eager-loaded, but the owner's privacy row is a
+    separate relation, so it is reached through the loaded user rather than being
+    issued as a separate query per row. A missing privacy row means "no public
+    display", which is the same answer the SNS profile search gives for a user
+    with no settings row.
+    """
+    owner = service.owner
+    if owner is None:
+        return None
+    return getattr(owner, "privacy_settings", None)
 
 
 def _escape_like(value: str) -> str:
@@ -172,7 +231,7 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _category_text_search(word: str):
+def _category_text_search(word: str, active_only: bool = False):
     """
     Predicate factory: does this service have a category whose name or slug
     contains `word`?
@@ -188,11 +247,26 @@ def _category_text_search(word: str):
     EXISTS rather than a JOIN: a service tagged with two matching categories
     must still be returned once, and the page query and the count query must
     agree.
+
+    `active_only` keeps retired categories out of public discovery matches. The
+    predicate is still called once per search word, so `active_only` must be
+    bound as a keyword argument (via `partial`) rather than being a positional
+    parameter that would be mistaken for `word`.
     """
     from app.models.category import Category
     from app.models.service_category import ServiceCategory
 
     pattern = f"%{_escape_like(word)}%"
+
+    conditions = [
+        ServiceCategory.service_id == ServiceColumns.id,
+        (
+            (func.lower(Category.name).like(pattern, escape="\\"))
+            | (func.lower(Category.slug).like(pattern, escape="\\"))
+        ),
+    ]
+    if active_only:
+        conditions.append(Category.is_active.is_(True))
 
     # ServiceCategory's primary key is the composite (service_id, category_id),
     # so it has no single-column `id` to select. Selecting the category id is
@@ -200,11 +274,7 @@ def _category_text_search(word: str):
     return exists(
         select(ServiceCategory.category_id)
         .join(Category, Category.id == ServiceCategory.category_id)
-        .where(ServiceCategory.service_id == ServiceColumns.id)
-        .where(
-            (func.lower(Category.name).like(pattern, escape="\\"))
-            | (func.lower(Category.slug).like(pattern, escape="\\"))
-        )
+        .where(*conditions)
     )
 
 

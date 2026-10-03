@@ -45,6 +45,7 @@ from sqlalchemy.sql import Select
 from app.core.exceptions import ServiceError
 from app.models.service import Service, ServiceStatus
 from app.models.service_category import ServiceCategory
+from app.models.user import User
 from app.modules.services.schemas.service_requests import TriStateFilter
 
 
@@ -465,6 +466,7 @@ class ServiceQueryBuilder:
         *,
         include_descendants: bool = False,
         primary_only: bool = False,
+        active_only: bool = False,
     ) -> "ServiceQueryBuilder":
         """
         Match services assigned to any of `category_ids` (ANY semantics).
@@ -472,6 +474,9 @@ class ServiceQueryBuilder:
         Implemented as EXISTS rather than a JOIN so a service assigned to
         several of the requested categories is returned once, and so the count
         query and the page query cannot disagree.
+
+        `active_only` excludes retired categories from public discovery while
+        leaving admin search fully permissive.
         """
         from app.modules.services.search.categories import category_scope_condition
 
@@ -479,7 +484,10 @@ class ServiceQueryBuilder:
         if not ids:
             return self
         condition = category_scope_condition(
-            ids, include_descendants=include_descendants, primary_only=primary_only
+            ids,
+            include_descendants=include_descendants,
+            primary_only=primary_only,
+            active_only=active_only,
         )
         self.conditions.append(
             _Condition(field="category", op=FilterOp.any_of, value=ids, condition=condition)
@@ -551,6 +559,28 @@ class ServiceQueryBuilder:
             selectinload(Service.category_links).selectinload(
                 ServiceCategory.category
             ),
+        )
+        return self
+
+    def with_owner_privacy(self) -> "ServiceQueryBuilder":
+        """
+        Eager-load the owner and the owner's privacy settings.
+
+        Chain-loaded in the same statement as the service fetch, for the same
+        MissingGreenlet reason documented on `eager_load`: the privacy gate is
+        applied during projection, which happens after the rows are consumed, so
+        a lazy load there would issue IO outside the greenlet.
+
+        The `privacy_settings` chain is selectinload rather than joinedload on
+        purpose: `users_eurobot` is a large table owned by another system and is
+        not part of the service query's filtering, so joining it would change the
+        row shape of the primary statement. A follow-up selectinload keeps the
+        filtering statement untouched.
+
+        Call AFTER `eager_load`, since `eager_load` replaces the include list.
+        """
+        self._include = self._include + (
+            selectinload(Service.owner).selectinload(User.privacy_settings),
         )
         return self
 

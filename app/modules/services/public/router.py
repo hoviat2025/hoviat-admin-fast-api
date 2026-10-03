@@ -8,8 +8,13 @@ from app.core.database import AsyncSessionLocal
 from app.core.exceptions import ServiceError
 from app.core.rate_limit import RateLimiter, make_rate_limit_dependency
 from app.core.schemas import StandardResponse
+from app.modules.services.public.schemas import (
+    PublicCategoryNode,
+    PublicServiceDetail,
+    PublicServiceSummary,
+)
+from app.modules.services.public.tree import build_public_category_tree
 from app.modules.services.schemas.service_requests import PublicServiceSearchParams
-from app.modules.services.schemas.service_responses import ServiceResponse
 from app.modules.services.search.facets_service import ServiceFacetsService
 from app.modules.services.search.service_search_service import ServiceSearchService
 
@@ -77,13 +82,14 @@ def _reject_unknown_query_params(request: Request, allowed: set) -> None:
 
 
 @router.get(
-    "/services/",
-    response_model=StandardResponse[List[ServiceResponse]],
+    "/",
+    response_model=StandardResponse[List[PublicServiceSummary]],
     summary="Search published services",
     description=(
         "Public discovery search. Returns published services only. The endpoint is "
         "international: it does not restrict the country, so the Germany-first "
-        "frontend simply passes country_code=DE."
+        "frontend simply passes country_code=DE. Retired categories neither match "
+        "nor appear in results."
     ),
     dependencies=[Depends(public_search_rate_limit)],
 )
@@ -110,7 +116,24 @@ async def search_public_services(
 
 
 @router.get(
-    "/services/locations/",
+    "/categories",
+    response_model=StandardResponse[List[PublicCategoryNode]],
+    summary="Active category hierarchy for public discovery",
+    description=(
+        "The category tree restricted to ACTIVE categories, for building public "
+        "category navigation. A retired category is omitted together with its "
+        "retired descendants. An active category whose parent is retired is "
+        "promoted to a root node so it stays reachable."
+    ),
+)
+async def public_categories(
+    session=Depends(get_db_session),
+):
+    return StandardResponse.success(data=await build_public_category_tree(session))
+
+
+@router.get(
+    "/locations",
     summary="Location choices available for public discovery",
     description=(
         "Country / first-level region / city hierarchy derived from the services "
@@ -125,3 +148,33 @@ async def service_locations(
     search: ServiceFacetsService = Depends(get_service_facets_service),
 ):
     return StandardResponse.success(data=await search.location_facets())
+
+
+# NOTE: this dynamic catch-all MUST stay last. Starlette matches the first route
+# whose path pattern fits and then validates parameters; it does NOT fall through
+# to a later route. Declaring `/{service_id}` above `/categories` or `/locations`
+# would therefore swallow those words, fail int validation, and answer 422
+# instead of returning the tree or the facets. Any new static public path belongs
+# above this one. `test_service_public_search.py` asserts this by requesting both
+# static paths and requiring a 200 rather than a 422 or a redirect.
+@router.get(
+    "/{service_id}",
+    response_model=StandardResponse[PublicServiceDetail],
+    summary="Public detail for one published service",
+    description=(
+        "Returns a published service with its VISIBLE contacts only, and an owner "
+        "block only when the service has an owner, show_owner is true and that "
+        "user's privacy settings permit public display. Returns 404 for a draft, "
+        "hidden or archived service, so a non-public record is indistinguishable "
+        "from a missing one."
+    ),
+    dependencies=[Depends(public_search_rate_limit)],
+)
+async def public_service_detail(
+    service_id: int,
+    search: ServiceSearchService = Depends(get_service_search_service),
+):
+    detail = await search.public_detail(service_id)
+    if detail is None:
+        raise ServiceError("NOT_FOUND", "Service not found", 404)
+    return StandardResponse.success(data=detail)

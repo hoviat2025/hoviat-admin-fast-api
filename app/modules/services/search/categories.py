@@ -26,7 +26,7 @@ from app.models.service import Service
 from app.models.service_category import ServiceCategory
 
 
-def descendant_category_cte(category_ids: Sequence[int], alias: str = "scoped_category"):
+def descendant_category_cte(category_ids: Sequence[int], alias: str = "scoped_category", active_only: bool = False):
     """
     A recursive CTE yielding `category_ids` plus all of their descendants.
 
@@ -35,15 +35,21 @@ def descendant_category_cte(category_ids: Sequence[int], alias: str = "scoped_ca
     category id is processed twice, not an infinite walk. `UNION` would be
     marginally safer at the cost of a dedupe step; the category tree is
     acyclic by construction, so the cheaper form is used deliberately.
+
+    `active_only` restricts expansion to ACTIVE categories. Used by public
+    discovery: a retired category in the middle of the tree must not keep
+    widening the match set, otherwise a retired branch would keep returning
+    services through its descendants.
     """
-    anchor = (
-        select(Category.id.label("id"))
-        .where(Category.id.in_(list(category_ids)))
-        .cte(alias, recursive=True)
-    )
-    return anchor.union_all(
-        select(Category.id.label("id")).where(Category.parent_id == anchor.c.id)
-    )
+    anchor_stmt = select(Category.id.label("id")).where(Category.id.in_(list(category_ids)))
+    if active_only:
+        anchor_stmt = anchor_stmt.where(Category.is_active.is_(True))
+    anchor = anchor_stmt.cte(alias, recursive=True)
+
+    child_stmt = select(Category.id.label("id")).where(Category.parent_id == anchor.c.id)
+    if active_only:
+        child_stmt = child_stmt.where(Category.is_active.is_(True))
+    return anchor.union_all(child_stmt)
 
 
 async def resolve_descendants(db, category_ids: Sequence[int]) -> list:
@@ -61,6 +67,7 @@ def category_scope_condition(
     *,
     include_descendants: bool = True,
     primary_only: bool = False,
+    active_only: bool = False,
 ):
     """
     Condition matching services assigned to any of `category_ids`.
@@ -73,23 +80,34 @@ def category_scope_condition(
     than "is tagged Restaurants somewhere". Without the flag, both primary and
     secondary assignments match, which is the right default for discovery.
 
+    `active_only` is the public-discovery rule: a retired category must not make
+    a service match, and must not be reachable by descending through it. Admin
+    search leaves this False so admins keep full visibility of historical
+    assignments, including retired ones.
+
     Exists, not join: a service carrying several of the requested categories
-    must still be returned once, and the page query and the count query have to
+    must still be returned once, and the page query and the count query must
     agree. A join would multiply rows and make both wrong.
     """
     ids = list(category_ids)
     if include_descendants:
-        scope = descendant_category_cte(ids)
+        scope = descendant_category_cte(ids, active_only=active_only)
         matcher = ServiceCategory.category_id.in_(select(scope.c.id))
     else:
         matcher = ServiceCategory.category_id.in_(ids)
+        if active_only:
+            matcher = ServiceCategory.category_id.in_(
+                select(Category.id).where(
+                    Category.id.in_(ids), Category.is_active.is_(True)
+                )
+            )
 
     link_filter = [ServiceCategory.service_id == Service.id, matcher]
     if primary_only:
         link_filter.append(ServiceCategory.is_primary.is_(True))
 
     # ServiceCategory's primary key is the composite (service_id, category_id),
-    # so there is no single-column `id` to select. Selecting category_id is both
+    # so it has no single-column `id` to select. Selecting category_id is both
     # correct and cheaper.
     return exists(select(ServiceCategory.category_id).where(*link_filter))
 
@@ -110,6 +128,12 @@ def category_text_exists() -> Select:
 
     Used to fold category text into `q` without joining, for the same
     de-duplication reason as above.
+
+    Note: the live `q` path uses `_category_text_search` in the search service,
+    not this helper, because that is a per-word predicate factory (see
+    `ServiceQueryBuilder.text_search`). This helper takes no `active_only` flag
+    for that reason; adding one here would be an unused parameter on a function
+    nothing calls.
     """
     return (
         select(ServiceCategory.id)
