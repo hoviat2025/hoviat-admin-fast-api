@@ -44,18 +44,24 @@ BEGIN
     SELECT count(*) INTO membership_count FROM pg_auth_members WHERE member = role_row.oid;
 
     -- Effective checks include PUBLIC, ownership and column-level grants.
+    -- SQL may reorder AND predicates. Guard object-specific functions inside
+    -- CASE so they cannot run on a different pg_class object kind first.
     SELECT count(*) INTO relation_count
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
       AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-      AND (has_table_privilege(stage_role, c.oid,
+      AND CASE WHEN c.relkind IN ('r', 'p', 'v', 'm', 'f') THEN
+          (has_table_privilege(stage_role, c.oid,
                'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
-           OR has_any_column_privilege(stage_role, c.oid, 'SELECT,INSERT,UPDATE,REFERENCES'));
+           OR has_any_column_privilege(stage_role, c.oid, 'SELECT,INSERT,UPDATE,REFERENCES'))
+          ELSE false END;
     SELECT count(*) INTO sequence_count
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
       AND c.relkind = 'S'
-      AND has_sequence_privilege(stage_role, c.oid, 'USAGE,SELECT,UPDATE');
+      AND CASE WHEN c.relkind = 'S' THEN
+          has_sequence_privilege(stage_role, c.oid, 'USAGE,SELECT,UPDATE')
+          ELSE false END;
     SELECT count(*) INTO schema_count FROM pg_namespace n
     WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
       AND has_schema_privilege(stage_role, n.oid, 'CREATE');

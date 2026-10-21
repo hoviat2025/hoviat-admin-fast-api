@@ -307,3 +307,10 @@ web verification, test suite, workers, servers or deployments were run.
 - Admin uses hoviat2025/admin-panel-frontend (e3bcb4e). Consumer reuses bardia-corp/hoviat-sns-nextjs history (d163713), with tracked working copy C:/Users/asus/Projects/hoviat/sns/hoviat-sns-nextjs. Original local consumer folder remains untouched. All use feature branch codex/sns-staging-20261021; no default-branch merge is part of staging preparation.
 - Git/Docker exclusions retain secrets, private import provenance, dumps, dependencies and archive artifacts locally. No virtual environment was created, repaired, moved or replaced.
 - Existing offline backend suite after runtime merge: 193 tests passed. Database-backed manual scripts were not run; legacy fixtures are not established as compatible with canonical locations/leaf-only categories. Linux dependency installation, frontend builds, cloned-database migrations and live staging checks remain pending.
+
+
+## Staging audit retry — 2026-10-21
+
+- User cloned all three pinned GitHub source commits into staging release 20261021-01. The migration runner stopped in step 1, the READ ONLY production privilege audit, because has_sequence_privilege was evaluated against ordinary table admins before its AND object-kind filter. Cleanup and migrations did not run.
+- Guarded both relation/column and sequence privilege calls with object-kind CASE expressions, preventing dependence on SQL predicate evaluation order. No isolation checks were removed or weakened. Source peer review found no further object-kind evaluation hazard in the audit/runner; diff check passed. The corrected audit still needs validation on PostgreSQL via the user-run retry.
+- Retry only updates the existing backend staging checkout and reruns its guarded migration runner; do not reclone the release or recreate the database. No VPS commands were run by the assistant.
