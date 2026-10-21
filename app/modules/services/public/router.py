@@ -179,3 +179,45 @@ async def public_service_detail(
     search: ServiceSearchService = Depends(get_service_search_service),
 ):
     return StandardResponse.success(data=await search.public_detail(service_id))
+
+
+# Keep the established /services/... paths above, and expose the flat paths
+# introduced by discovery clients through exactly the same handlers and DTOs.
+# Register every static alias before /{service_id}: Starlette matches paths
+# before validating the integer parameter. The hidden /services alias also
+# preserves the legacy search URL without its trailing slash.
+_compat_limit = [Depends(public_search_rate_limit)]
+router.add_api_route(
+    "/", search_public_services, methods=["GET"],
+    response_model=StandardResponse[List[PublicServiceResponse]],
+    dependencies=_compat_limit, name="search_public_services_flat",
+)
+router.add_api_route(
+    "/services", search_public_services, methods=["GET"],
+    response_model=StandardResponse[List[PublicServiceResponse]],
+    dependencies=_compat_limit, include_in_schema=False,
+    name="search_public_services_without_slash",
+)
+router.add_api_route(
+    "/categories", service_categories, methods=["GET"],
+    response_model=StandardResponse[List[PublicCategoryTreeResponse]],
+    dependencies=_compat_limit, name="service_categories_flat",
+)
+router.add_api_route(
+    "/locations", service_locations, methods=["GET"],
+    dependencies=_compat_limit, name="service_locations_flat",
+)
+router.add_api_route(
+    "/location-catalogue", location_catalogue, methods=["GET"],
+    dependencies=_compat_limit, name="location_catalogue_flat",
+)
+router.add_api_route(
+    "/{service_id}/related-person", public_related_person, methods=["GET"],
+    response_model=StandardResponse[RelatedPersonResponse | None],
+    dependencies=_compat_limit, name="public_related_person_flat",
+)
+router.add_api_route(
+    "/{service_id}", public_service_detail, methods=["GET"],
+    response_model=StandardResponse[PublicServiceResponse],
+    dependencies=_compat_limit, name="public_service_detail_flat",
+)

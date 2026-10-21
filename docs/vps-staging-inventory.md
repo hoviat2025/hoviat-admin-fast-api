@@ -90,13 +90,29 @@ starting anything. No service or hostname has been created.
    cloning production does not copy the 34 locally imported public businesses.
    Prepare a reviewed staging import; do not bypass local-only script guards.
 
-### Source/build preparation
+### Source/build preparation — GitHub workflow selected 2026-10-21
 
-The backend/admin have uncommitted and untracked application files; active
-consumer `sns/hoviat-nextjs-notion-09/discover-app` has no Git repository.
-Deploying only the current Git commit would omit the working application.
-Prepare reviewed source snapshots including required new files, while excluding
-`.env*`, credentials, dumps, `.git`, virtualenvs, `node_modules`, `.next` and `dist`.
+Use branch codex/sns-staging-20261021 in each repository. Record exact commit
+IDs before cloning a release; do not deploy a moving default branch or pull into
+the existing production checkout.
+
+| Release subdirectory | GitHub repository |
+| --- | --- |
+| backend | hoviat2025/hoviat-admin-fast-api |
+| consumer | ardia-corp/hoviat-sns-nextjs |
+| admin | hoviat2025/admin-panel-frontend |
+
+The tracked consumer working copy is now
+C:/Users/asus/Projects/hoviat/sns/hoviat-sns-nextjs. It captures the current
+hoviat-nextjs-notion-09/discover-app sources on the original consumer repository
+history. That earlier folder and its local environment/dependencies remain
+untouched; use the tracked copy for subsequent source commits. Deployment does
+not require the previously prepared source archive.
+
+Clone into separate backend/consumer/admin folders under the new staging release
+root. Keep actual env files, private import provenance, database dumps and local
+dependencies outside Git. The production database clone does not include the
+locally imported business listings; reviewed data transfer is a separate step.
 Build the Next.js consumer and Vite admin on Linux from their npm lockfiles;
 do not copy Windows dependencies/build products.
 
@@ -125,9 +141,16 @@ job but no Telegram call; keep workers disabled and remove test jobs/account
 before ever enabling them. Do not relax public dev-login loopback protections or
 impersonate a real user copied from production.
 
-## Next administrative prerequisite
+## Confirmed staging database checkpoint — 2026-10-21
 
-Confirm interactive sudo/PostgreSQL administration from the user's SSH terminal
-before preparing the new database/role. Automated `sudo -n nginx -T` did not
-provide configuration output, so this inspection does not establish unattended
-sudo privileges. No passwords should be pasted into chat.
+The user ran prepare_hoviat_staging_db_20261021.sh successfully. Database
+hoviat_sns_stage_20261021, owner hoviat_sns_stage, contains 13,468 users and
+privacy rows and 13 public tables; retained queue history is 3,302 completed and
+3 failed jobs. Protected snapshot:
+/var/lib/postgresql/sns-stage-20261021/hoviat-before-staging.dump.
+
+The user confirmed no archive upload, staging migrations or application startup
+commands were run. Interactive sudo/PostgreSQL administration works. Next verify
+VPS GitHub access, clone the exact source commits into the new release, run the
+read-only role audit and guarded staging migration script, then configure/build.
+No passwords should be pasted into chat.

@@ -488,6 +488,7 @@ class ServiceQueryBuilder:
         *,
         include_descendants: bool = False,
         primary_only: bool = False,
+        active_only: bool = False,
     ) -> "ServiceQueryBuilder":
         """
         Match services assigned to any of `category_ids` (ANY semantics).
@@ -495,6 +496,9 @@ class ServiceQueryBuilder:
         Implemented as EXISTS rather than a JOIN so a service assigned to
         several of the requested categories is returned once, and so the count
         query and the page query cannot disagree.
+
+        `active_only` excludes retired categories from public discovery while
+        leaving admin search fully permissive.
         """
         from app.modules.services.search.categories import category_scope_condition
 
@@ -502,7 +506,10 @@ class ServiceQueryBuilder:
         if not ids:
             return self
         condition = category_scope_condition(
-            ids, include_descendants=include_descendants, primary_only=primary_only
+            ids,
+            include_descendants=include_descendants,
+            primary_only=primary_only,
+            active_only=active_only,
         )
         self.conditions.append(
             _Condition(field="category", op=FilterOp.any_of, value=ids, condition=condition)

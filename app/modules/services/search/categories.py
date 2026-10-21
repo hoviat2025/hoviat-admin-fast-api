@@ -24,16 +24,28 @@ from app.models.service import Service
 from app.models.service_category import ServiceCategory
 
 
-def descendant_category_cte(category_ids: Sequence[int], alias: str = "scoped_category"):
+def descendant_category_cte(
+    category_ids: Sequence[int], alias: str = "scoped_category", active_only: bool = False
+):
     """
     Selected category ids plus their level-two root memberships, without duplicates.
     """
     # Exactly two levels: selected categories plus children linked to ANY
     # selected root. UNION deduplicates a shared child reached from two roots.
     ids = list(category_ids)
-    return select(Category.id.label("id")).where(Category.id.in_(ids)).union(
-        select(CategoryParent.category_id.label("id")).where(CategoryParent.parent_id.in_(ids))
-    ).cte(alias)
+    selected = select(Category.id.label("id")).where(Category.id.in_(ids)).correlate(None)
+    if active_only:
+        selected = selected.where(Category.is_active.is_(True))
+    # Limit both ends of a public membership to active categories: selecting a
+    # retired root must not expose services under its still-active children.
+    children = select(CategoryParent.category_id.label("id")).where(
+        CategoryParent.parent_id.in_(selected)
+    )
+    if active_only:
+        children = children.join(Category, Category.id == CategoryParent.category_id).where(
+            Category.is_active.is_(True)
+        )
+    return selected.union(children).cte(alias)
 
 
 async def resolve_descendants(db, category_ids: Sequence[int]) -> list:
@@ -51,12 +63,14 @@ def category_scope_condition(
     *,
     include_descendants: bool = True,
     primary_only: bool = False,
+    active_only: bool = False,
 ):
     """
     Condition matching services assigned to any of `category_ids`.
 
-    `include_descendants` expands each id to its subtree via the recursive CTE,
-    so selecting a parent matches services tagged anywhere below it.
+    `include_descendants` includes children linked through any root membership.
+    `active_only` excludes retired categories on the public surface; admin
+    callers retain the default unrestricted scope.
 
     `primary_only` restricts to the service's primary category, which is a
     genuinely different question: "primary category is Restaurants" is narrower
@@ -69,8 +83,12 @@ def category_scope_condition(
     """
     ids = list(category_ids)
     if include_descendants:
-        scope = descendant_category_cte(ids)
+        scope = descendant_category_cte(ids, active_only=active_only)
         matcher = ServiceCategory.category_id.in_(select(scope.c.id))
+    elif active_only:
+        matcher = ServiceCategory.category_id.in_(
+            select(Category.id).where(Category.id.in_(ids), Category.is_active.is_(True))
+        )
     else:
         matcher = ServiceCategory.category_id.in_(ids)
 

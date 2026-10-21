@@ -6,7 +6,7 @@ Three pieces, kept separate on purpose:
   * `query.py`      — the engine: allow-listed fields, operators, sorting, paging.
   * `service_search_service.py` — compiles a validated params object into an
     engine query for one of the two surfaces.
-  * `categories.py` — the recursive category-scope CTE.
+  * `categories.py` — the two-level category membership scope.
 
 The two surfaces (public and admin) deliberately have different contracts. The
 public one is a small, obvious vocabulary a person can type into a URL bar; the
@@ -83,7 +83,9 @@ class ServiceSearchService:
         builder = ServiceQueryBuilder(self.db, allow=PUBLIC_ALLOW).published_only()
 
         if params.q:
-            builder.text_search(params.q, extra_predicate=_category_text_search)
+            builder.text_search(
+                params.q, extra_predicate=partial(_category_text_search, active_only=True)
+            )
         if params.country_code:
             builder.filter("country_code", FilterOp.exact, params.country_code)
         if params.state:
@@ -96,8 +98,10 @@ class ServiceSearchService:
                 builder.filter(key, FilterOp.tristate, value.value)
         if params.category:
             # ANY semantics, and a parent id matches services tagged with any of
-            # its descendants.
-            builder.category_filter(params.category, include_descendants=True)
+            # its active children through any root membership.
+            builder.category_filter(
+                params.category, include_descendants=True, active_only=True
+            )
 
         # None keeps the builder's context default: relevance with text,
         # newest without it. An explicit newest (or other sort) wins.
@@ -185,7 +189,7 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _category_text_search(word: str):
+def _category_text_search(word: str, *, active_only: bool = False):
     """
     Predicate factory: does this service have a category whose name or slug
     contains `word`?
@@ -210,7 +214,7 @@ def _category_text_search(word: str):
     # ServiceCategory's primary key is the composite (service_id, category_id),
     # so it has no single-column `id` to select. Selecting the category id is
     # both correct and cheaper.
-    return exists(
+    category_match = (
         select(ServiceCategory.category_id)
         .join(Category, Category.id == ServiceCategory.category_id)
         .where(ServiceCategory.service_id == ServiceColumns.id)
@@ -219,6 +223,9 @@ def _category_text_search(word: str):
             | (func.lower(Category.slug).like(pattern, escape="\\"))
         )
     )
+    if active_only:
+        category_match = category_match.where(Category.is_active.is_(True))
+    return exists(category_match)
 
 
 def _coerce_owner_id(value) -> int:

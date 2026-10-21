@@ -298,3 +298,12 @@ web verification, test suite, workers, servers or deployments were run.
 - Added independent Telegram and R2 write switches, default enabled for existing deployments. New staging configuration disables both, background workers and dev login, and generates fresh secrets without copying existing env files. Image uploads/removals remain unavailable until storage is isolated.
 - Prepared an exclusive staging environment bootstrap for release /home/bardia/apps/sns-staging/releases/20261021-01. It checks the migrated staging database with a read-only connection and creates protected env files; it has not been executed.
 - Fixed the documented relevance-sort fallback and updated stale unit fixtures for current public categories, owner consent and authorized local dev impersonation. Full offline backend suite: 193 tests passed, including 9 staging outbound-isolation tests. Tests used mocks/in-memory SQLite; no PostgreSQL or external API calls. Linux dependency installation, frontend builds and live staging checks remain pending.
+
+
+## GitHub staging workflow restored — 2026-10-21
+
+- User chose GitHub source deployment instead of the source archive. Existing VPS database clone is retained; no archive upload, migrations or app startup commands were run by the user at this checkpoint.
+- Backend current features were committed on codex/sns-staging-20261021 and reconciled with remote business-discovery commit c2b27b8. Current double-services routes, public DTOs, covers and related-person consent remain; flat compatibility routes share the same handlers. Active-only category filtering/text matching from the remote change is retained for public reads, without restricting admin search.
+- Admin uses hoviat2025/admin-panel-frontend (e3bcb4e). Consumer reuses bardia-corp/hoviat-sns-nextjs history (d163713), with tracked working copy C:/Users/asus/Projects/hoviat/sns/hoviat-sns-nextjs. Original local consumer folder remains untouched. All use feature branch codex/sns-staging-20261021; no default-branch merge is part of staging preparation.
+- Git/Docker exclusions retain secrets, private import provenance, dumps, dependencies and archive artifacts locally. No virtual environment was created, repaired, moved or replaced.
+- Existing offline backend suite after runtime merge: 193 tests passed. Database-backed manual scripts were not run; legacy fixtures are not established as compatible with canonical locations/leaf-only categories. Linux dependency installation, frontend builds, cloned-database migrations and live staging checks remain pending.

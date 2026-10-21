@@ -4,6 +4,10 @@ service query layer, the public search endpoint and the location facets.
 
 Exercises the real HTTP surface against the local development database.
 
+Historical manual script: DB fixtures predate canonical locations and leaf-only
+assignments and have not been validated against the current schema. Only the
+route-table assertions were reconciled with the current public URL contract.
+
 Run:  venv\\Scripts\\python.exe -m tests_manual.test_service_public_search
 """
 
@@ -673,6 +677,102 @@ async def _test_legacy_user_security():
         check("real column still orderable", False, f"{type(exc).__name__}: {exc}")
 
 
+# ==================================================================== routing
+
+
+async def _test_public_routing():
+    """
+    The public service API must exist in every mode that serves public discovery.
+
+    Reloads app.main with each APP_MODE and inspects the resulting route table.
+    Reload (rather than inspecting the source) is used so the assertion is about
+    what actually gets mounted, not about how the condition reads.
+    """
+    print("--- public router mounting per APP_MODE ---")
+
+    import importlib
+
+    from app.core import config
+
+    public_prefix = "/api/services"
+    # `dev` deliberately does NOT mount anything: it is the config default and the
+    # app has never served routers in it. Public discovery is served by `sns`
+    # (public/SNS process), plus `admin`/`all` for local and combined
+    # deployments. `eurobot` serves webhooks only.
+    expected = {
+        "sns": True,
+        "admin": True,
+        "all": True,
+        "dev": False,
+        "eurobot": False,
+    }
+
+    original = config.settings.APP_MODE
+    try:
+        for mode, should_mount in expected.items():
+            config.settings.APP_MODE = mode
+            module = importlib.reload(importlib.import_module("app.main"))
+            mounted = any(
+                getattr(route, "path", "").startswith(public_prefix)
+                for route in module.app.routes
+            )
+            check(
+                f"APP_MODE={mode} mounts public service API: {should_mount}",
+                mounted is should_mount,
+                f"mounted={mounted}",
+            )
+
+        # Both URL families use the same approved business response contract.
+        config.settings.APP_MODE = "all"
+        module = importlib.reload(importlib.import_module("app.main"))
+        public_paths = [
+            r.path
+            for r in module.app.routes
+            if r.path.startswith(public_prefix) and r.path != public_prefix
+        ]
+        check(
+            "public contract preserves legacy routes and compatible flat aliases",
+            set(public_paths) == {
+                "/api/services/services/",
+                "/api/services/services",
+                "/api/services/services/categories/",
+                "/api/services/services/locations/",
+                "/api/services/services/location-catalogue/",
+                "/api/services/services/{service_id}/related-person/",
+                "/api/services/services/{service_id}/",
+                "/api/services/",
+                "/api/services/categories",
+                "/api/services/locations",
+                "/api/services/location-catalogue",
+                "/api/services/{service_id}/related-person",
+                "/api/services/{service_id}",
+            },
+            f"paths={public_paths}",
+        )
+
+        # Flat static paths must precede the flat integer catch-all.
+        dynamic = public_paths.index("/api/services/{service_id}")
+        static = [public_paths.index(f"/api/services/{name}")
+                  for name in ("categories", "locations", "location-catalogue", "services")]
+        check(
+            "static public routes are declared before the dynamic detail route",
+            max(static) < dynamic,
+            f"paths={public_paths}",
+        )
+
+        # The public surface must not be reachable through the admin prefix,
+        # where the permission guards live.
+        admin_paths = [r.path for r in module.app.routes if getattr(r, "path", "").startswith("/api/admin")]
+        check(
+            "public service routes are not under /api/admin",
+            not any("service-management" not in p and "/categories" in p for p in admin_paths),
+            "",
+        )
+    finally:
+        config.settings.APP_MODE = original
+        importlib.reload(importlib.import_module("app.main"))
+
+
 async def main() -> None:
     headers = await _headers()
     created: dict = {"services": [], "categories": []}
@@ -713,6 +813,7 @@ async def main() -> None:
             await engine.dispose()
 
     await _test_legacy_user_security()
+    await _test_public_routing()
 
     if failures:
         raise AssertionError(f"{len(failures)} check(s) failed: {failures}")
