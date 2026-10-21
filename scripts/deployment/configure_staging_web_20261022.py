@@ -15,6 +15,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 
 
 RELEASE = Path('/home/bardia/apps/sns-staging/releases/20261021-01')
@@ -125,10 +126,45 @@ location = /__preview-entry {{
     add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
 }}
 ''')
+    configure_site(token, nginx, old)
+
+
+def resume_after_validation_failure():
+    """Reuse prepared artifacts only after the staging HTTP rollback checkpoint."""
+    if os.geteuid() != 0 or socket.gethostname() != 'srv5089629844':
+        raise SystemExit('Run with sudo on srv5089629844 only.')
+    if Path(__file__).resolve().parents[2] != RELEASE / 'backend':
+        raise SystemExit('Run from the approved staging release only.')
+    for path in (SITE, BACKUP, AUTH, SNIPPET, GATE / 'entry.html', ADMIN / 'index.html'):
+        if not path.is_file() or path.is_symlink() or path.stat().st_uid != 0:
+            raise SystemExit(f'Expected root-owned recovery artifact missing or unsafe: {path}')
+    old = SITE.read_text()
+    if (ENABLED.resolve() != SITE or old != BACKUP.read_text()
+            or 'listen 443' in old or WEB_HOST not in old or ADMIN_HOST not in old):
+        raise SystemExit('Not at the expected staging-only HTTP rollback checkpoint; stop and review.')
+    if HOOK.exists() or HOOK.is_symlink():
+        raise SystemExit('Renewal hook already exists; stop and review instead of overwriting.')
+    for path in (CERT / 'fullchain.pem', CERT / 'privkey.pem'):
+        if not path.is_file():
+            raise SystemExit(f'Required certificate missing: {path}')
+    matches = re.findall(r'hoviat_sns_stage_preview=([0-9a-f]{64});', SNIPPET.read_text())
+    if len(matches) != 1:
+        raise SystemExit('Cannot recover the existing preview token safely.')
+    nginx = shutil.which('nginx') or '/usr/sbin/nginx'
+    run(nginx, '-t')
+    for port in (18753, 18755):
+        with socket.create_connection(('127.0.0.1', port), timeout=5):
+            pass
+    os.chmod(GATE, 0o755)
+    configure_site(matches[0], nginx, old)
+
+
+def configure_site(token, nginx, old):
     config = f'''# Isolated SNS staging only. Cookie token is a secret; do not paste this file.
 map $cookie_hoviat_sns_stage_preview $hoviat_stage_realm {{
     default "Hoviat staging preview";
-    "{token}" off;
+    # Anchored case-sensitive match avoids hashing a long secret key.
+    "~^{token}$" off;
 }}
 
 server {{
@@ -204,7 +240,12 @@ server {{
 
 if __name__ == '__main__':
     try:
-        main()
+        if sys.argv[1:] == ['--resume']:
+            resume_after_validation_failure()
+        elif not sys.argv[1:]:
+            main()
+        else:
+            raise SystemExit('Usage: configure_staging_web_20261022.py [--resume]')
     except (OSError, subprocess.CalledProcessError) as error:
         raise SystemExit(
             f'Staging web setup stopped: {error}. '
