@@ -2,16 +2,21 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import ServiceError
 from app.core.rate_limit import RateLimiter, make_rate_limit_dependency
 from app.core.schemas import StandardResponse
 from app.modules.services.schemas.service_requests import PublicServiceSearchParams
-from app.modules.services.schemas.service_responses import ServiceResponse
+from app.modules.services.schemas.public_service_responses import (
+    PublicCategoryTreeResponse,
+    PublicServiceResponse,
+)
+from app.modules.services.location import normalise_country_code
 from app.modules.services.search.facets_service import ServiceFacetsService
 from app.modules.services.search.service_search_service import ServiceSearchService
+from app.modules.services.public.related_person import related_person, RelatedPersonResponse
 
 router = APIRouter()
 
@@ -78,7 +83,7 @@ def _reject_unknown_query_params(request: Request, allowed: set) -> None:
 
 @router.get(
     "/services/",
-    response_model=StandardResponse[List[ServiceResponse]],
+    response_model=StandardResponse[List[PublicServiceResponse]],
     summary="Search published services",
     description=(
         "Public discovery search. Returns published services only. The endpoint is "
@@ -125,3 +130,52 @@ async def service_locations(
     search: ServiceFacetsService = Depends(get_service_facets_service),
 ):
     return StandardResponse.success(data=await search.location_facets())
+
+
+@router.get(
+    "/services/location-catalogue/",
+    summary="Defined states and cities for business editors",
+    dependencies=[Depends(public_search_rate_limit)],
+)
+async def location_catalogue(search: ServiceFacetsService = Depends(get_service_facets_service)):
+    return StandardResponse.success(data=await search.location_catalogue())
+
+
+@router.get(
+    "/services/categories/",
+    response_model=StandardResponse[List[PublicCategoryTreeResponse]],
+    summary="Browse the active two-level business taxonomy",
+    description="All active categories, including categories without published listings. A shared child appears under every root parent. The taxonomy is shared across countries; no listing counts are fabricated.",
+    dependencies=[Depends(public_search_rate_limit)],
+)
+async def service_categories(
+    request: Request,
+    country_code: str | None = Query(default=None),
+    search: ServiceFacetsService = Depends(get_service_facets_service),
+):
+    _reject_unknown_query_params(request, {"country_code"})
+    country_code = normalise_country_code(country_code)
+    return StandardResponse.success(data=await search.category_tree(country_code))
+
+
+@router.get(
+    "/services/{service_id}/related-person/",
+    response_model=StandardResponse[RelatedPersonResponse | None],
+    dependencies=[Depends(public_search_rate_limit)],
+)
+async def public_related_person(service_id: int, response: Response, db=Depends(get_db_session)):
+    response.headers["Cache-Control"] = "no-store"
+    return StandardResponse.success(data=await related_person(db, service_id))
+
+
+@router.get(
+    "/services/{service_id}/",
+    response_model=StandardResponse[PublicServiceResponse],
+    summary="Get one published service",
+    dependencies=[Depends(public_search_rate_limit)],
+)
+async def public_service_detail(
+    service_id: int,
+    search: ServiceSearchService = Depends(get_service_search_service),
+):
+    return StandardResponse.success(data=await search.public_detail(service_id))

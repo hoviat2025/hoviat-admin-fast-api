@@ -33,10 +33,13 @@ class UserPrivacySettings(Base):
     # If False, the profile is hidden entirely regardless of specific settings
     is_profile_discoverable = Column(Boolean, server_default="true", nullable=False)
 
-    # Identity Information
+    # Defaults apply only to new rows. Existing preferences must be preserved.
+    # Keep in sync with post_login.ensure_privacy_row, channel sync and
+    # migrations 11/22: nickname, photo, country, bio and occupation public;
+    # username, first/last names and contact information private.
     profile_picture_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="private",
+        server_default="public",
         nullable=False,
     )
 
@@ -58,7 +61,7 @@ class UserPrivacySettings(Base):
         nullable=False,
     )
 
-    # Only the nickname is public by default; every other field must be opted in.
+    # Public display name; separate from private-by-default first/last names.
     nickname_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
         server_default="public",
@@ -67,7 +70,7 @@ class UserPrivacySettings(Base):
 
     country_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="private",
+        server_default="public",
         nullable=False,
     )
 
@@ -87,13 +90,13 @@ class UserPrivacySettings(Base):
     # Self-presentation fields
     bio_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="private",
+        server_default="public",
         nullable=False,
     )
 
     occupation_visibility = Column(
         SAEnum(PrivacyScope, name="privacy_scope"),
-        server_default="private",
+        server_default="public",
         nullable=False,
     )
 

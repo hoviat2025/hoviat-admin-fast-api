@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Profile fields that appear in the Telegram channel post caption. Editing any
 # of these should trigger a channel sync; bio/social links do not.
 CHANNEL_VISIBLE_FIELDS = frozenset(
-    {"first_name", "last_name", "whatsapp_number", "country"}
+    {"nickname", "first_name", "last_name", "whatsapp_number", "country"}
 )
 
 

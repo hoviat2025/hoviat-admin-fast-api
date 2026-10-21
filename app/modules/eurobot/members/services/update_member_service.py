@@ -28,7 +28,8 @@ class UpdateMemberService:
         # 2. Data Access: Call the Repo
         updated_user = await self.repo.update(
             user_id=payload.user_id, 
-            update_data=update_data
+            update_data=update_data,
+            preserve_existing_nickname=True,
         )
 
         # 3. Business Logic: Check Existence

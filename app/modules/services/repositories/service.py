@@ -84,6 +84,15 @@ class ServiceRepository:
 
     async def update(self, service_id: int, data: dict) -> Optional[Service]:
         if data:
+            if "owner_user_id" in data:
+                from sqlalchemy import case
+                data = dict(data)
+                # Consent belongs to the current assignment, not the business's
+                # next owner. SQL comparison also handles NULL reassignment.
+                data["owner_show_profile"] = case(
+                    (Service.owner_user_id.is_distinct_from(data["owner_user_id"]), False),
+                    else_=data.get("owner_show_profile", Service.owner_show_profile),
+                )
             await self.db.execute(
                 update(Service).where(Service.id == service_id).values(**data)
             )

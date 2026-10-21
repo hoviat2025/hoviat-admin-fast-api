@@ -21,6 +21,7 @@ from app.models.user import User  # noqa: F401
 from app.models.category import Category  # noqa: F401
 from app.models.service_category import ServiceCategory
 from app.models.service_contact import ServiceContact
+from app.models.city import City  # noqa: F401
 
 
 class ServiceStatus(str, enum.Enum):
@@ -43,9 +44,9 @@ class Service(Base):
     A service / business directory listing.
 
     Independent of the user entity: owner_user_id is optional, and the listing
-    survives the owner being deleted (ON DELETE SET NULL). Ownership is not an
-    authorization concept — editing permissions live elsewhere (admins now,
-    owner self-management later).
+    survives the owner being deleted (ON DELETE SET NULL). Assigned owners may
+    edit customer-facing fields through the SNS owner service. Staff retain
+    ownership assignment and publication/category/relevance permissions.
     """
     __tablename__ = "services"
 
@@ -63,9 +64,14 @@ class Service(Base):
     # Public display also requires the owner's own privacy settings to permit
     # it; that check belongs to the read layer, not here.
     show_owner = Column(Boolean, server_default="false", nullable=False)
+    # Independent consent from the assigned person, per business. Admins cannot
+    # opt a user in; reassignment resets it. Global personal privacy also applies.
+    owner_show_profile = Column(Boolean, server_default="false", nullable=False)
 
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
+    # Managed storage key only. JSON clients cannot supply or change this path.
+    cover_image_path = Column(Text, nullable=True)
 
     # Four independent Iranian/Persian relevance signals.
     #
@@ -101,6 +107,8 @@ class Service(Base):
     address = Column(Text, nullable=True)
     postal_code = Column(Text, nullable=True)
     city = Column(Text, nullable=True)
+    city_id = Column(BigInteger, ForeignKey("cities.id", ondelete="RESTRICT"), nullable=True)
+    state_id = Column(BigInteger, ForeignKey("country_states.id", ondelete="RESTRICT"), nullable=True)
     # First-level administrative region. Canonical spelling when the country has
     # a vocabulary; otherwise free text.
     state = Column(Text, nullable=True)

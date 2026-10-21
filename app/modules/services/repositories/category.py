@@ -1,24 +1,35 @@
 from typing import Optional, Sequence
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, exists, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import func
 
-from app.models.category import Category
+from app.models.category import Category, CategoryParent
 
 
 class CategoryRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _rows():
+        return select(Category).options(selectinload(Category.parent_links)).execution_options(populate_existing=True)
+
+    async def lock_hierarchy(self):
+        # Serialize structural category edits across workers. Row locks below
+        # still coordinate activity/publish invariants with service mutations.
+        await self.db.execute(text("SELECT pg_advisory_xact_lock(606125019)"))
+
     async def get(self, category_id: int) -> Optional[Category]:
         result = await self.db.execute(
-            select(Category).where(Category.id == category_id)
+            self._rows().where(Category.id == category_id)
         )
         return result.scalars().first()
 
     async def get_by_slug(self, slug: str) -> Optional[Category]:
         result = await self.db.execute(
-            select(Category).where(Category.slug == slug)
+            self._rows().where(Category.slug == slug)
         )
         return result.scalars().first()
 
@@ -27,17 +38,23 @@ class CategoryRepository:
         parent_id: Optional[int] = None,
         include_inactive: bool = True,
     ) -> Sequence[Category]:
-        stmt = select(Category)
+        stmt = self._rows()
         if not include_inactive:
             stmt = stmt.where(Category.is_active == True)  # noqa: E712
         if parent_id is not None:
-            stmt = stmt.where(Category.parent_id == parent_id)
+            stmt = stmt.where(or_(
+                Category.parent_id == parent_id,
+                exists(select(CategoryParent.category_id).where(
+                    CategoryParent.category_id == Category.id,
+                    CategoryParent.parent_id == parent_id,
+                )),
+            ))
         stmt = stmt.order_by(Category.display_order, Category.id)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
     async def list_all(self, include_inactive: bool = True) -> Sequence[Category]:
-        stmt = select(Category)
+        stmt = self._rows()
         if not include_inactive:
             stmt = stmt.where(Category.is_active == True)  # noqa: E712
         stmt = stmt.order_by(Category.display_order, Category.id)
@@ -85,7 +102,7 @@ class CategoryRepository:
         interleave with a service write that relies on that category.
         """
         result = await self.db.execute(
-            select(Category)
+            self._rows()
             .where(Category.id == category_id)
             .with_for_update()
             .execution_options(populate_existing=True)
@@ -127,9 +144,23 @@ class CategoryRepository:
     async def update(self, category_id: int, data: dict) -> Optional[Category]:
         if data:
             await self.db.execute(
-                update(Category).where(Category.id == category_id).values(**data)
+                update(Category).where(Category.id == category_id).values(**data, updated_at=func.now())
             )
         return await self.get(category_id)
+
+    async def has_children(self, category_id: int) -> bool:
+        return bool(await self.db.scalar(select(or_(
+            exists(select(Category.id).where(Category.parent_id == category_id)),
+            exists(select(CategoryParent.category_id).where(CategoryParent.parent_id == category_id)),
+        ))))
+
+    async def replace_parents(self, category_id: int, parent_ids: Sequence[int]):
+        await self.db.execute(delete(CategoryParent).where(CategoryParent.category_id == category_id))
+        self.db.add_all([
+            CategoryParent(category_id=category_id, parent_id=parent_id)
+            for parent_id in dict.fromkeys(parent_ids)
+        ])
+        await self.db.flush()
 
     async def delete(self, category_id: int) -> None:
         """

@@ -132,7 +132,7 @@ if mode == "sns" or mode == "all":
         tags=["SNS Module"]
     )
 
-if mode == "admin" or mode == "all":
+if mode in {"admin", "sns", "all"}:
     # Public service discovery. Unauthenticated by design, mounted separately
     # from /api/admin so the admin permission guards cannot leak into it and the
     # public surface stays obviously distinct in the API docs.

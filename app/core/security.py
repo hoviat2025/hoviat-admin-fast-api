@@ -35,11 +35,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
     
     # Calculate expiration time using UTC for cross-server compatibility
-    if expires_delta:
+    if expires_delta is not None:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        # Fallback to a default 15-minute window if no delta is provided
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        # SNS callers omit a custom duration; use the configured lifetime just
+        # like explicit-duration callers (including the admin login service).
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     # Update the payload with the "exp" (expiration) claim
     to_encode.update({"exp": expire})

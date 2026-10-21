@@ -10,10 +10,8 @@ Two concerns:
 
   * the matching itself, as EXISTS against the service_categories link.
 
-The subtree is resolved with a PostgreSQL recursive CTE rather than by walking
-the tree in Python. Doing it in the database keeps the query a single round trip
-regardless of depth, and it cannot drift from the actual tree the way a
-cached in-memory copy would.
+Membership expansion stays in the query: a selected root matches children
+linked through any root membership, and EXISTS avoids duplicate service rows.
 """
 
 from typing import Sequence
@@ -21,29 +19,21 @@ from typing import Sequence
 from sqlalchemy import exists, select
 from sqlalchemy.sql import Select
 
-from app.models.category import Category
+from app.models.category import Category, CategoryParent
 from app.models.service import Service
 from app.models.service_category import ServiceCategory
 
 
 def descendant_category_cte(category_ids: Sequence[int], alias: str = "scoped_category"):
     """
-    A recursive CTE yielding `category_ids` plus all of their descendants.
-
-    `UNION ALL` is safe here: the categories table is a tree guarded against
-    cycles by the domain layer, and a duplicate row would only mean the same
-    category id is processed twice, not an infinite walk. `UNION` would be
-    marginally safer at the cost of a dedupe step; the category tree is
-    acyclic by construction, so the cheaper form is used deliberately.
+    Selected category ids plus their level-two root memberships, without duplicates.
     """
-    anchor = (
-        select(Category.id.label("id"))
-        .where(Category.id.in_(list(category_ids)))
-        .cte(alias, recursive=True)
-    )
-    return anchor.union_all(
-        select(Category.id.label("id")).where(Category.parent_id == anchor.c.id)
-    )
+    # Exactly two levels: selected categories plus children linked to ANY
+    # selected root. UNION deduplicates a shared child reached from two roots.
+    ids = list(category_ids)
+    return select(Category.id.label("id")).where(Category.id.in_(ids)).union(
+        select(CategoryParent.category_id.label("id")).where(CategoryParent.parent_id.in_(ids))
+    ).cte(alias)
 
 
 async def resolve_descendants(db, category_ids: Sequence[int]) -> list:
@@ -112,7 +102,7 @@ def category_text_exists() -> Select:
     de-duplication reason as above.
     """
     return (
-        select(ServiceCategory.id)
+        select(ServiceCategory.category_id)
         .join(Category, Category.id == ServiceCategory.category_id)
         .where(ServiceCategory.service_id == Service.id)
     )

@@ -2,12 +2,44 @@
 .env
 .env.*
 secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Private source evidence, contacts and machine-specific import reports.
+# Preserve locally; distribute separately from application source when needed.
+/data/imports/
+
+# Superseded by Git-based releases; retain this local transport helper only.
+/scripts/deployment/build_staging_bundle.py
+
+# Database snapshots and deployment/build archives must never enter Git.
+*.dump
+*.backup
+*.sql.gz
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+/backups/
+/staging-artifacts/
 
 # --- Python ---
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.sqlite
+*.sqlite3
+*.db
 
 # --- Virtual Environment ---
 venv/

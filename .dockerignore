@@ -14,7 +14,38 @@ venv/
 
 # Environment Variables (IMPORTANT: Don't bake secrets into the image)
 .env
+.env.*
+**/.env
+**/.env.*
+secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Private import evidence and local transport artifacts.
+data/imports/
+scripts/deployment/build_staging_bundle.py
+backups/
+staging-artifacts/
+*.dump
+*.backup
+*.sql.gz
+*.tar
+*.tar.gz
+*.tgz
+*.zip
 
 # Testing/Misc
 pytest_cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.sqlite
+*.sqlite3
+*.db
 .DS_Store

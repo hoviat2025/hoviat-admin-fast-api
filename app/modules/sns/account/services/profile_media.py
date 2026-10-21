@@ -39,6 +39,7 @@ class ProfileMediaService:
         self, user: User, file: UploadFile
     ) -> ProfilePictureResponse:
         try:
+            storage_client.require_writes_enabled()
             if file.size is not None and file.size > MAX_IMAGE_BYTES:
                 raise ServiceError(
                     "IMAGE_TOO_LARGE", "Profile picture must be 5 MB or smaller.", 413
@@ -89,6 +90,7 @@ class ProfileMediaService:
             await file.close()
 
     async def remove_avatar(self, user: User) -> ProfilePictureResponse:
+        storage_client.require_writes_enabled()
         old_key = user.profile_path
 
         user.profile_path = None

@@ -71,8 +71,29 @@ pip install -r requirements.txt
 #   DATABASE_URL=postgresql+asyncpg://<user>:<password>@127.0.0.1:5432/<db>
 #   DISABLE_BACKGROUND_WORKERS=true
 
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 18743 --reload
 ```
+
+The repaired local Python environment is `.venv` (the older `venv` directory
+is preserved). On Windows it can be used directly:
+
+```powershell
+rtk proxy .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 18743
+rtk proxy .venv\Scripts\python.exe -m unittest discover -s tests
+rtk proxy .venv\Scripts\python.exe -m tests_manual.test_business_consumer_local
+```
+
+The consumer app is in
+`C:\Users\asus\Projects\hoviat\sns\hoviat-nextjs-notion-09\discover-app`.
+Run `rtk proxy npm.cmd run dev` there;
+its local configuration points to this API with personal mock mode disabled.
+Both admin and consumer code use the same local API; no production deployment
+is performed by those commands.
+
+`tests_manual.test_business_frontend_local` supports `seed`, `check`, `cleanup`
+for browser/HTTP checks while both local servers run. It refuses any database
+except `127.0.0.1:5433/hoviat_service_dev`. Always run cleanup after seeding;
+the synthetic user/listing must not be treated as directory content.
 
 Verify at runtime that you are on the intended database before trusting anything:
 

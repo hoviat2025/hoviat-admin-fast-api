@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.user_privacy_settings import PrivacyScope
 
@@ -14,10 +14,18 @@ class UpdateProfileRequest(BaseModel):
 
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    nickname: Optional[str] = Field(default=None, min_length=1, max_length=200)
     bio: Optional[str] = None
     occupation: Optional[str] = None
     country: Optional[str] = None
     whatsapp_number: Optional[str] = None
+
+    @field_validator("nickname", mode="before")
+    @classmethod
+    def public_name(cls, value):
+        if value is None or not isinstance(value, str) or not value.strip():
+            raise ValueError("Name cannot be blank")
+        return value.strip()
 
 
 class UpdatePrivacyRequest(BaseModel):
@@ -35,6 +43,15 @@ class UpdatePrivacyRequest(BaseModel):
     bio_visibility: Optional[PrivacyScope] = None
     occupation_visibility: Optional[PrivacyScope] = None
     social_links_visibility: Optional[PrivacyScope] = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        # Omitted fields keep their defaults and are excluded from PATCH data.
+        # Supplied null cannot be stored in the non-null privacy columns.
+        if value is None:
+            raise ValueError("Privacy settings cannot be null")
+        return value
 
 
 class SocialLinkIn(BaseModel):

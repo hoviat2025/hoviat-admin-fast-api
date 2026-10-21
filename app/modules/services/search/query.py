@@ -34,6 +34,7 @@ from sqlalchemy import (
     String,
     Text,
     and_,
+    case,
     func,
     or_,
     select,
@@ -66,6 +67,7 @@ class FilterOp(str, Enum):
 class SortMode(str, Enum):
     """Named sort modes. Clients pick a name; they never name a column."""
 
+    relevance = "relevance"
     newest = "newest"
     oldest = "oldest"
     name_asc = "name_asc"
@@ -74,6 +76,9 @@ class SortMode(str, Enum):
 
 
 _SORT_EXPRESSIONS: dict[SortMode, tuple] = {
+    # Relevance uses dynamic word-hit expressions when text is present. Without
+    # text it honestly falls back to the same deterministic order as browsing.
+    SortMode.relevance: (Service.created_at.desc(), Service.id.desc()),
     SortMode.newest: (Service.created_at.desc(), Service.id.desc()),
     SortMode.oldest: (Service.created_at.asc(), Service.id.asc()),
     SortMode.name_asc: (Service.name.asc(), Service.id.desc()),
@@ -280,6 +285,7 @@ class ServiceQueryBuilder:
     #: is what makes a draft unreachable from the public endpoint by construction.
     _allow_status: bool = False
     _include: tuple = ()
+    _relevance_order: tuple = ()
 
     def allow_status(self, enabled: bool = True) -> "ServiceQueryBuilder":
         self._allow_status = enabled
@@ -433,6 +439,9 @@ class ServiceQueryBuilder:
             return self
 
         word_predicates = []
+        name_hits = []
+        category_hits = []
+        detail_hits = []
         for raw_word in cleaned.split():
             # Lowercase the WORD, not just the column: comparing lower(col)
             # against the original term would make any term containing an
@@ -444,9 +453,23 @@ class ServiceQueryBuilder:
                 func.lower(column).like(pattern, escape="\\")
                 for column in (Service.name, Service.description, Service.city, Service.state)
             ]
+            name_hits.append(case((matches[0], 1), else_=0))
+            detail_hits.append(case((or_(*matches[1:]), 1), else_=0))
             if extra_predicate is not None:
-                matches.append(extra_predicate(word))
+                category_match = extra_predicate(word)
+                matches.append(category_match)
+                category_hits.append(case((category_match, 1), else_=0))
             word_predicates.append(or_(*matches))
+
+        # Lexicographic tiers: any additional name hit outranks category hits,
+        # and category hits outrank description/location hits. These expressions
+        # only order already-matching rows; WHERE and COUNT stay unchanged.
+        self._relevance_order = (
+            sum(name_hits).desc(),
+            *((sum(category_hits).desc(),) if category_hits else ()),
+            sum(detail_hits).desc(),
+            Service.id.desc(),
+        )
 
         self.conditions.append(
             _Condition(
@@ -515,7 +538,7 @@ class ServiceQueryBuilder:
         if mode is None:
             return self
         try:
-            resolved = SortMode(str(mode).lower())
+            resolved = mode if isinstance(mode, SortMode) else SortMode(str(mode).lower())
         except ValueError:
             raise ServiceError(
                 "INVALID_INPUT",
@@ -588,8 +611,13 @@ class ServiceQueryBuilder:
         stmt = select(Service)
         for condition in self.conditions:
             stmt = stmt.where(condition.condition)
-        expressions = _SORT_EXPRESSIONS.get(
-            self.order_by or SortMode.newest, _SORT_EXPRESSIONS[SortMode.newest]
+        mode = self.order_by or (
+            SortMode.relevance if self._relevance_order else SortMode.newest
+        )
+        expressions = (
+            self._relevance_order
+            if mode == SortMode.relevance and self._relevance_order
+            else _SORT_EXPRESSIONS.get(mode, _SORT_EXPRESSIONS[SortMode.newest])
         )
         # Every sort mode carries a unique tiebreaker, so paging is stable: two
         # services with the same name or timestamp cannot swap places between

@@ -1,35 +1,24 @@
 -- Migration 11.
--- Sets the SNS privacy policy for ALL users: nickname, country, profile
--- picture, bio and occupation are public by default; everything else private.
+-- Sets defaults for NEW SNS privacy rows: nickname, country, profile picture,
+-- bio and occupation public; everything else private; profile discoverable.
 --
--- Migration 07 previously backfilled rows with nickname-only public. This
--- migration upgrades every existing row to the policy now enforced in code
--- (UpdateChannelPostService and SNS login ensure_privacy_row), and aligns the
--- column defaults so future rows created via the ORM match too.
+-- Existing visibility choices and updated_at are preserved, including choices
+-- made under migration 07's nickname-only defaults. Defaults are not consent to
+-- change existing rows. Mirror the explicit inserts in UpdateChannelPostService
+-- and SNS login ensure_privacy_row, and the ORM server defaults.
+--
+-- Corrected 2026-10-20: the original revision unconditionally reset every
+-- existing privacy row. If it was already applied, use migration 22 for the
+-- forward defaults-only path. Neither revision can restore earlier preferences;
+-- restoration requires trustworthy backups/audit evidence and a separate plan.
 --
 -- Run against the unified production database (after migrations 01-10).
 
 BEGIN;
 
--- 1. Apply the policy to every existing privacy row.
-UPDATE public.user_privacy_settings
-SET is_profile_discoverable      = true,
-    profile_picture_visibility   = 'public',
-    username_visibility          = 'private',
-    first_name_visibility        = 'private',
-    last_name_visibility         = 'private',
-    nickname_visibility          = 'public',
-    country_visibility           = 'public',
-    phone_number_visibility      = 'private',
-    whatsapp_number_visibility   = 'private',
-    bio_visibility               = 'public',
-    occupation_visibility        = 'public',
-    social_links_visibility      = 'private',
-    updated_at                   = now();
-
--- 2. Align column defaults with the same policy so rows created outside the
---    explicit code insert (e.g. via the ORM) inherit identical visibility.
+-- Defaults affect only future inserts that omit the respective columns.
 ALTER TABLE public.user_privacy_settings
+    ALTER COLUMN is_profile_discoverable    SET DEFAULT true,
     ALTER COLUMN profile_picture_visibility SET DEFAULT 'public',
     ALTER COLUMN username_visibility        SET DEFAULT 'private',
     ALTER COLUMN first_name_visibility      SET DEFAULT 'private',

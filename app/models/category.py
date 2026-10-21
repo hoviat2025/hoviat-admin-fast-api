@@ -2,6 +2,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    CheckConstraint,
     ForeignKey,
     Integer,
     Text,
@@ -15,8 +16,8 @@ from app.models.base import Base
 
 class Category(Base):
     """
-    A directory category, with an optional self-referential parent so the tree
-    can be two or more levels deep.
+    A category in a two-level directory. Roots have no parents; a child can
+    belong to several roots. parent_id retains its primary root for compatibility.
 
     Deletion is deliberately restrictive: the self reference and the
     service_categories link both use ON DELETE RESTRICT, so a category that has
@@ -64,3 +65,36 @@ class Category(Base):
     # service must not be silently removed. Deletion is blocked at the DB level
     # (RESTRICT) and would raise rather than orphan or delete links.
     service_links = relationship("ServiceCategory", back_populates="category")
+
+    parent_links = relationship(
+        "CategoryParent", foreign_keys="CategoryParent.category_id",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def level(self) -> int:
+        return 1 if self.parent_id is None else 2
+
+    @property
+    def parent_ids(self) -> list[int]:
+        # Repositories eager-load links. Avoid implicit asynchronous IO for
+        # unrelated code that only needs a category label or primary parent.
+        ids = {link.parent_id for link in self.__dict__.get("parent_links", [])}
+        if self.parent_id is not None:
+            ids.add(self.parent_id)
+        return sorted(ids, key=lambda value: (value != self.parent_id, value))
+
+
+class CategoryParent(Base):
+    """Membership of a level-two category under one root category."""
+
+    __tablename__ = "category_parents"
+    __table_args__ = (CheckConstraint("category_id <> parent_id", name="category_parent_not_self"),)
+
+    category_id = Column(
+        BigInteger, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True,
+    )
+    parent_id = Column(
+        BigInteger, ForeignKey("categories.id", ondelete="RESTRICT"), primary_key=True,
+        index=True,
+    )

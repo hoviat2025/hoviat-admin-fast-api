@@ -1,6 +1,7 @@
 from typing import List
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 
 from app.core.schemas import StandardResponse
 from app.models.admin import Admin
@@ -36,8 +37,20 @@ from app.modules.services.schemas.service_requests import (
     ServiceUpdateRequest,
 )
 from app.modules.services.schemas.service_responses import ServiceResponse
+from app.modules.services.schemas.location_requests import CityCreateRequest
 
 router = APIRouter()
+
+
+@router.post("/locations/cities", dependencies=[Depends(require_write_users_permission)])
+async def create_location_city(
+    payload: CityCreateRequest,
+    request: Request,
+    admin: Admin = Depends(require_write_users_permission),
+    service: AdminServiceManagementService = Depends(get_admin_service_management_service),
+):
+    ip, ua = _client(request)
+    return StandardResponse.success(data=await service.create_city(payload, admin, ip, ua))
 
 
 def _client(request: Request):
@@ -51,6 +64,43 @@ def _client(request: Request):
 # =======================================================================
 # Services
 # =======================================================================
+
+
+@router.post(
+    "/services/{service_id}/cover-image",
+    response_model=StandardResponse[ServiceResponse],
+    summary="Upload or replace a business cover image",
+    dependencies=[Depends(require_write_users_permission)],
+)
+async def upload_service_cover_image(
+    service_id: int,
+    request: Request,
+    file: UploadFile = File(..., description="JPEG, PNG or WebP, at most 5 MB"),
+    expected_updated_at: datetime = Form(...),
+    admin: Admin = Depends(require_write_users_permission),
+    service: AdminServiceManagementService = Depends(get_admin_service_management_service),
+):
+    ip, ua = _client(request)
+    result = await service.replace_cover_image(service_id, file, expected_updated_at, admin, ip, ua)
+    return StandardResponse.success(data=result)
+
+
+@router.delete(
+    "/services/{service_id}/cover-image",
+    response_model=StandardResponse[ServiceResponse],
+    summary="Remove a business cover image",
+    dependencies=[Depends(require_write_users_permission)],
+)
+async def remove_service_cover_image(
+    service_id: int,
+    request: Request,
+    expected_updated_at: datetime = Query(...),
+    admin: Admin = Depends(require_write_users_permission),
+    service: AdminServiceManagementService = Depends(get_admin_service_management_service),
+):
+    ip, ua = _client(request)
+    result = await service.remove_cover_image(service_id, expected_updated_at, admin, ip, ua)
+    return StandardResponse.success(data=result)
 
 
 @router.get(

@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -17,7 +18,7 @@ class Settings(BaseSettings):
     # Defines the runtime environment (e.g., "dev", "prod", "test")
     APP_MODE: str = "dev"
 
-    # Local-development safety switch.
+    # Queue safety switch for local development and isolated staging.
     #
     # When true, the process does not start the background/VIP queue workers and
     # does not run the startup queue-recovery pass. Workers execute real jobs via
@@ -28,8 +29,13 @@ class Settings(BaseSettings):
     # channel sync) would trigger it.
     #
     # Defaults to False so production behaviour is unchanged. Set it to true only
-    # in local .env files.
+    # in local development or isolated staging .env files.
     DISABLE_BACKGROUND_WORKERS: bool = False
+
+    # Independent outbound isolation for cloned/staging environments. Queue
+    # disabling alone does not stop request handlers from using these clients.
+    TELEGRAM_API_ENABLED: bool = True
+    MEDIA_WRITES_ENABLED: bool = True
     
     # Secret key used for cryptographic signing and security hashes
     SECRET_KEY: str
@@ -66,10 +72,17 @@ class Settings(BaseSettings):
     SNS_LOGIN_BOT_TOKEN: str
     # Base URL prefix used to assemble absolute profile picture URLs.
     PROFILE_MEDIA_URL: str = ""
+    # Public base URL for uploaded business covers; defaults to shared media.
+    SERVICE_MEDIA_URL: str = ""
     # Maximum age (seconds) of the Telegram auth_date before login is rejected.
     TELEGRAM_LOGIN_MAX_AGE_SECONDS: int = 86400
     # Lifetime of bot-issued SNS login tokens (user types token into website).
     LOGIN_TOKEN_TTL_SECONDS: int = 300
+
+    # Local SNS sessions without Telegram. Negative ids cannot impersonate a
+    # normal Telegram user; a marker on the row also prevents id collisions.
+    DEV_LOGIN_ENABLED: bool = False
+    DEV_LOGIN_USER_ID: int = Field(default=-900000001, lt=0)
 
     # --- Cloud Storage (R2/S3 Compatible) ---
     R2_ENDPOINT_URL: str

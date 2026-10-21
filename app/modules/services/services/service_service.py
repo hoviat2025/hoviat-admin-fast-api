@@ -9,6 +9,7 @@ from app.models.service import Service, ServiceStatus
 from app.modules.services.repositories.category import CategoryRepository
 from app.modules.services.repositories.contacts import ServiceContactRepository
 from app.modules.services.repositories.country_state import CountryStateRepository
+from app.modules.services.repositories.city import CityRepository
 from app.modules.services.repositories.service import ServiceRepository
 from app.modules.services.repositories.service_categories import (
     ServiceCategoryRepository,
@@ -48,6 +49,7 @@ from app.modules.services.location import (
     resolve_state,
 )
 from app.shared.repositories.user_base import UserBaseRepository
+from app.modules.services.media_urls import public_cover_image_url
 
 # Invoked immediately before the transaction is committed, with the id of the
 # row that was just written. It lets the admin layer write an audit-log row in
@@ -60,10 +62,10 @@ class ServiceService:
     """
     Business logic for service listings.
 
-    There are no HTTP routes in this milestone; the admin endpoints (Milestone
-    2) and the public search (Milestone 4) will call these methods. Validation
-    lives here and in app.modules.services.validation, so every entry point —
-    admin form, importer, seed script — is checked the same way.
+    Admin and owner entry points share these transactional writes. Validation
+    lives here and in app.modules.services.validation, so forms, importers and
+    seed scripts are checked the same way. Public reads use a separate privacy
+    projection and never reuse the admin aggregate response.
     """
 
     def __init__(self, db: AsyncSession):
@@ -76,6 +78,7 @@ class ServiceService:
         # For canonicalising `state`. Germany has a vocabulary; countries
         # without one pass their value through untouched.
         self.country_states = CountryStateRepository(db)
+        self.cities = CityRepository(db)
         self._vocab_cache: dict = {}
 
     # ------------------------------------------------------------------ reads
@@ -208,9 +211,7 @@ class ServiceService:
                 city=data.get("city", service.city),
                 postal_code=data.get("postal_code", service.postal_code),
             )
-            for field, value in location.items():
-                if field in data or field == "country_code":
-                    data[field] = value
+            data.update(location)
 
         # Coordinates must be validated as the resulting pair, not just the
         # supplied half.
@@ -316,6 +317,7 @@ class ServiceService:
         payload: ServiceAggregateSaveRequest,
         *,
         before_commit: Optional[BeforeCommit] = None,
+        owner_show_profile: Optional[bool] = None,
     ) -> ServiceResponse:
         """
         Replace the complete editable state of an existing service in ONE
@@ -378,9 +380,10 @@ class ServiceService:
         )
         await self.category_links.replace(service_id, self._link_dicts(pairs))
 
-        await self.services.update(
-            service_id, await self._service_data(payload)
-        )
+        parent_data = await self._service_data(payload)
+        if owner_show_profile is not None:
+            parent_data["owner_show_profile"] = owner_show_profile
+        await self.services.update(service_id, parent_data)
 
         await self._finish(before_commit, service_id)
         return await self.get(service_id)
@@ -411,6 +414,7 @@ class ServiceService:
         if not requested:
             return
 
+        await self.categories.lock_hierarchy()
         activity = await self.categories.locked_activity_map(requested)
         missing = set(requested) - set(activity)
         if missing:
@@ -420,6 +424,11 @@ class ServiceService:
                 + ", ".join(str(x) for x in sorted(missing)),
                 404,
             )
+
+        # Roots are navigation groups, never assignable business categories.
+        parent_map = await self.categories.parent_map()
+        if any(parent_map[category_id] is None for category_id in requested):
+            raise ServiceError("INVALID_INPUT", "Choose second-level categories; first-level categories are groups only", 422)
 
         currently_assigned: set[int] = set()
         current_primary_id: Optional[int] = None
@@ -550,12 +559,28 @@ class ServiceService:
         else:
             vocabulary = None
 
+        resolved_state = resolve_state(resolved_country, state, lambda code: vocabulary)
+        resolved_city = await self.cities.resolve(resolved_country, resolved_state, city)
+        state_id = None
+        if resolved_city:
+            city_row, state_row = resolved_city
+            state_id = state_row.id
+            resolved_state = state_row.name
+        elif resolved_state:
+            from sqlalchemy import select
+            from app.models.country_state import CountryState
+            state_id = await self.db.scalar(select(CountryState.id).where(
+                CountryState.country_code == resolved_country, CountryState.name == resolved_state,
+                CountryState.is_active.is_(True),
+            ))
+            if state_id is None:
+                raise ServiceError("INVALID_INPUT", "Choose a defined state from the location catalogue", 422)
         return {
             "country_code": resolved_country,
-            "state": resolve_state(
-                resolved_country, state, lambda code: vocabulary
-            ),
-            "city": clean_city(city),
+            "state": resolved_state,
+            "state_id": state_id,
+            "city": resolved_city[0].name if resolved_city else None,
+            "city_id": resolved_city[0].id if resolved_city else None,
             "postal_code": clean_postal_code(postal_code),
         }
 
@@ -576,8 +601,10 @@ class ServiceService:
             id=service.id,
             owner_user_id=service.owner_user_id,
             show_owner=service.show_owner,
+            owner_show_profile=service.owner_show_profile,
             name=service.name,
             description=service.description,
+            cover_image_url=public_cover_image_url(getattr(service, "cover_image_path", None)),
             # Tri-state Iranian/Persian relevance. None means "not assessed"
             # and must survive to the response instead of collapsing to False.
             persian_owned=service.persian_owned,

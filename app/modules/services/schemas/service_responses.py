@@ -34,9 +34,11 @@ class ServiceResponse(BaseModel):
 
     owner_user_id: Optional[int] = None
     show_owner: bool
+    owner_show_profile: bool = False
 
     name: str
     description: Optional[str] = None
+    cover_image_url: Optional[str] = None
 
     # Tri-state Iranian/Persian relevance: true = explicitly yes,
     # false = explicitly no, null = not assessed. These describe the listing,

@@ -38,7 +38,7 @@ class UpsertMemberService:
 
         try:
             # 2. Call Repo (Upsert)
-            user = await self.repo.upsert(upsert_data)
+            user = await self.repo.upsert(upsert_data, preserve_existing_nickname=True)
             
             # 3. Commit
             # Save the upsert changes to the DB first.

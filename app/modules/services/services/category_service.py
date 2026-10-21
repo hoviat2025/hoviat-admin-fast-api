@@ -21,12 +21,11 @@ from app.modules.services.validation import (
     clean_optional_text,
     normalise_slug,
     require_non_empty,
-    would_create_category_cycle,
 )
 
 # See ServiceService.BeforeCommit: lets the admin layer audit a category change
 # inside the same transaction.
-BeforeCommit = Callable[[], Awaitable[None]]
+BeforeCommit = Callable[[int], Awaitable[None]]
 
 
 class CategoryService:
@@ -56,32 +55,63 @@ class CategoryService:
 
     async def tree(self, include_inactive: bool = True) -> list[CategoryTreeResponse]:
         categories = await self.repo.list_all(include_inactive=include_inactive)
-
-        nodes: dict[int, CategoryTreeResponse] = {
-            item.id: CategoryTreeResponse(
-                id=item.id,
-                parent_id=item.parent_id,
-                name=item.name,
-                slug=item.slug,
-                description=item.description,
-                display_order=item.display_order,
-                is_active=item.is_active,
-                created_at=item.created_at,
-                updated_at=item.updated_at,
-                children=[],
-            )
-            for item in categories
+        roots = {
+            item.id: CategoryTreeResponse(**CategoryResponse.model_validate(item).model_dump())
+            for item in categories if item.level == 1
         }
-
-        roots: list[CategoryTreeResponse] = []
         for item in categories:
-            node = nodes[item.id]
-            if item.parent_id is not None and item.parent_id in nodes:
-                nodes[item.parent_id].children.append(node)
-            else:
-                roots.append(node)
+            if item.level != 2:
+                continue
+            for parent_id in item.parent_ids:
+                if parent_id in roots:
+                    # A child appears under every root membership; its stable
+                    # category id is still the one used for service assignment.
+                    roots[parent_id].children.append(
+                        CategoryTreeResponse(**CategoryResponse.model_validate(item).model_dump())
+                    )
+        return list(roots.values())
 
-        return roots
+    @staticmethod
+    def _parents(payload, current=None):
+        fields = payload.model_fields_set
+        if "parent_ids" in fields:
+            parent_ids = list(dict.fromkeys(payload.parent_ids))
+        elif "parent_id" in fields:
+            parent_ids = [] if payload.parent_id is None else [payload.parent_id]
+        else:
+            parent_ids = list(current.parent_ids) if current is not None else []
+        if "parent_id" in fields:
+            primary = payload.parent_id
+        elif current is not None and current.parent_id in parent_ids:
+            primary = current.parent_id
+        else:
+            primary = parent_ids[0] if parent_ids else None
+        if (parent_ids and primary not in parent_ids) or (not parent_ids and primary is not None):
+            raise ServiceError("INVALID_INPUT", "parent_id must be one of parent_ids; roots have no parents", 422)
+        level = 2 if parent_ids else 1
+        if "level" in fields and payload.level != level:
+            raise ServiceError("INVALID_INPUT", "Level 1 has no parents; level 2 requires at least one root parent", 422)
+        return parent_ids, primary
+
+    async def _validate_parents(self, category_id, parent_ids, old_parent_ids=()):
+        if category_id in parent_ids:
+            raise ServiceError("INVALID_INPUT", "A category cannot be its own parent", 422)
+        ids = set(parent_ids) | set(old_parent_ids)
+        if category_id is not None:
+            ids.add(category_id)
+        locked = {}
+        # Same ascending row-lock order used by service publication validation.
+        for item_id in sorted(ids):
+            row = await self.repo.get_for_update(item_id)
+            if row is None:
+                raise ServiceError("CATEGORY_NOT_FOUND", "Category or parent category not found", 404)
+            locked[item_id] = row
+        for parent_id in parent_ids:
+            if locked[parent_id].parent_id is not None or locked[parent_id].parent_ids:
+                raise ServiceError("INVALID_INPUT", "Only root categories can be parents; categories have exactly two levels", 422)
+        if category_id is not None and parent_ids and await self.repo.has_children(category_id):
+            raise ServiceError("CONFLICT_OCCURRED", "A root with child categories cannot become a child; move its children first", 409)
+        return locked.get(category_id)
 
     async def create(
         self,
@@ -89,29 +119,27 @@ class CategoryService:
         *,
         before_commit: Optional[BeforeCommit] = None,
     ) -> CategoryResponse:
+        await self.repo.lock_hierarchy()
         name = require_non_empty(payload.name, "name")
         slug = normalise_slug(payload.slug)
 
         if await self.repo.get_by_slug(slug):
             raise ServiceError("CONFLICT_OCCURRED", "slug is already in use", 409)
 
-        if payload.parent_id is not None and not await self.repo.get(
-            payload.parent_id
-        ):
-            raise ServiceError(
-                "CATEGORY_NOT_FOUND", "Parent category not found", 404
-            )
+        parent_ids, primary = self._parents(payload)
+        await self._validate_parents(None, parent_ids)
 
         category = await self.repo.create(
             {
                 "name": name,
                 "slug": slug,
-                "parent_id": payload.parent_id,
+                "parent_id": primary,
                 "description": clean_optional_text(payload.description),
                 "display_order": payload.display_order,
                 "is_active": payload.is_active,
             }
         )
+        await self.repo.replace_parents(category.id, parent_ids)
         await self._finish(before_commit, category.id)
 
         created = await self.repo.get(category.id)
@@ -124,22 +152,25 @@ class CategoryService:
         *,
         before_commit: Optional[BeforeCommit] = None,
     ) -> CategoryResponse:
-        # Lock the category row first. This is the other half of the shared lock
-        # that service writes take on the categories they depend on: because both
-        # sides hold the same row lock while deciding, a deactivation cannot
-        # commit between a service write's "this category is active" check and
-        # that write's commit. Whoever gets here second re-reads committed state
-        # and refuses.
-        #
-        # Ordering: this is the only row lock this transaction takes, and it is
-        # taken before the slug/parent lookups (which are plain reads). Service
-        # writes lock the service row first and category rows afterwards, in
-        # ascending id order, so no cycle can form.
-        category = await self.repo.get_for_update(category_id)
+        await self.repo.lock_hierarchy()
+        category = await self.repo.get(category_id)
         if not category:
             raise ServiceError("CATEGORY_NOT_FOUND", "Category not found", 404)
 
+        parent_ids, primary = self._parents(payload, category)
+        category = await self._validate_parents(category_id, parent_ids, category.parent_ids)
         data = payload.model_dump(exclude_unset=True)
+        hierarchy_changed = bool(set(data) & {"parent_id", "parent_ids", "level"})
+        for field in ("parent_id", "parent_ids", "level"):
+            data.pop(field, None)
+        if hierarchy_changed:
+            data["parent_id"] = primary
+            if primary is None and category.parent_id is not None:
+                from sqlalchemy import exists, select
+                from app.models.service_category import ServiceCategory
+                assigned = await self.db.scalar(select(exists().where(ServiceCategory.category_id == category_id)))
+                if assigned:
+                    raise ServiceError("CONFLICT_OCCURRED", "Reassign businesses before converting their category into a group", 409)
 
         if "name" in data:
             data["name"] = require_non_empty(data["name"], "name")
@@ -176,24 +207,9 @@ class CategoryService:
                     409,
                 )
 
-        if "parent_id" in data and data["parent_id"] is not None:
-            parent_id = data["parent_id"]
-            if not await self.repo.get(parent_id):
-                raise ServiceError(
-                    "CATEGORY_NOT_FOUND", "Parent category not found", 404
-                )
-
-            parent_by_id = await self.repo.parent_map()
-            if would_create_category_cycle(
-                category_id, parent_id, lambda cid: parent_by_id.get(cid)
-            ):
-                raise ServiceError(
-                    "INVALID_INPUT",
-                    "a category cannot be moved under itself or its descendants",
-                    422,
-                )
-
         await self.repo.update(category_id, data)
+        if hierarchy_changed:
+            await self.repo.replace_parents(category_id, parent_ids)
         await self._finish(before_commit, category_id)
 
         updated = await self.repo.get(category_id)

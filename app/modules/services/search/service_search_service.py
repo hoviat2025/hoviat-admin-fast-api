@@ -25,7 +25,7 @@ from app.modules.services.schemas.service_requests import (
     AdminServiceSearchParams,
     PublicServiceSearchParams,
 )
-from app.modules.services.schemas.service_responses import ServiceResponse
+from app.modules.services.public.serialization import to_public_service
 from app.modules.services.search.query import FilterOp, ServiceQueryBuilder
 
 # The public surface's allow-list. Exactly the keys the public schema declares,
@@ -60,8 +60,8 @@ _RELEVANCE_KEYS = (
 class ServiceSearchService:
     def __init__(self, db):
         self.db = db
-        # Row -> response conversion is the same code the write paths use, so a
-        # search result and a freshly saved record cannot serialise differently.
+        # Admin search uses the full aggregate. Public search has a separate
+        # allow-listed read boundary for contacts, provenance and owner identity.
         self._serialize = partial(ServiceService._to_response)
 
     async def public_search(
@@ -99,10 +99,23 @@ class ServiceSearchService:
             # its descendants.
             builder.category_filter(params.category, include_descendants=True)
 
+        # None keeps the builder's context default: relevance with text,
+        # newest without it. An explicit newest (or other sort) wins.
         builder.sort(params.sort).paginate(params.page, params.size).eager_load()
 
         rows, total = await builder.execute()
-        return [self._serialize(None, row) for row in rows], total
+        return [to_public_service(row) for row in rows], total
+
+    async def public_detail(self, service_id: int):
+        """Return a public business, with the same 404 for drafts and missing ids."""
+        builder = ServiceQueryBuilder(
+            self.db, allow=PUBLIC_ALLOW | {"id"}
+        ).published_only()
+        builder.filter("id", FilterOp.exact, service_id).eager_load()
+        rows, _ = await builder.execute()
+        if not rows:
+            raise ServiceError("SERVICE_NOT_FOUND", "Service not found", 404)
+        return to_public_service(rows[0])
 
     async def admin_search(self, params: AdminServiceSearchParams) -> tuple:
         """

@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 import httpx
 
 from app.core.config import settings
+from app.core.exceptions import ServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ async def _raw_http_post(
     retry_on_429: bool = True,
 ) -> TelegramResponse:
     """Execute one Telegram HTTP POST request."""
+    _require_telegram_enabled()
     async with httpx.AsyncClient(
         transport=_create_telegram_transport(),
         timeout=25.0,
@@ -124,6 +126,7 @@ async def _raw_http_post(
 
 async def _raw_http_get_bytes(url: str) -> Optional[bytes]:
     """Download bytes from Telegram using the same IPv4-only transport."""
+    _require_telegram_enabled()
     try:
         async with httpx.AsyncClient(
             transport=_create_telegram_transport(),
@@ -148,6 +151,15 @@ async def _raw_http_get_bytes(url: str) -> Optional[bytes]:
             exc,
         )
         return None
+
+
+def _require_telegram_enabled() -> None:
+    if not settings.TELEGRAM_API_ENABLED:
+        raise ServiceError(
+            "TELEGRAM_API_DISABLED",
+            "Telegram API calls are disabled in this environment.",
+            503,
+        )
 
 
 class TelegramBot:

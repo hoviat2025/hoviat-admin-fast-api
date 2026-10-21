@@ -1,4 +1,6 @@
 from typing import Optional
+from datetime import datetime
+from fastapi import UploadFile
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,7 @@ from app.modules.services.schemas.service_requests import (
 from app.modules.services.schemas.service_responses import ServiceResponse
 from app.modules.services.services.category_service import CategoryService
 from app.modules.services.services.service_service import ServiceService
+from app.modules.services.services.service_media import ServiceMediaService
 
 
 class AdminServiceManagementService:
@@ -53,6 +56,38 @@ class AdminServiceManagementService:
         self.category_domain = CategoryService(db)
         self.audit = AdminAuditRepository(db)
         self.search = ServiceAdminSearchRepository(db)
+
+    async def create_city(self, payload, admin, ip_address=None, user_agent=None):
+        from app.modules.services.repositories.city import CityRepository
+        city = await CityRepository(self.db).create(payload.state_id, payload.name, payload.aliases)
+        await self._hook(admin, "location.city_create", "city", ip_address, user_agent,
+                         changes=payload.model_dump())(city.id)
+        await self.db.commit()
+        return {"id": city.id, "state_id": city.state_id, "name": city.name, "aliases": city.aliases}
+
+    async def replace_cover_image(
+        self, service_id: int, file: UploadFile, expected_updated_at: datetime,
+        admin: Admin, ip_address: Optional[str] = None, user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        return await ServiceMediaService(self.db).replace(
+            service_id, file, expected_updated_at,
+            before_commit=self._hook(
+                admin, "service.cover_image_replace", "service", ip_address, user_agent,
+                changes={"cover_image": {"operation": "replace"}},
+            ),
+        )
+
+    async def remove_cover_image(
+        self, service_id: int, expected_updated_at: datetime, admin: Admin,
+        ip_address: Optional[str] = None, user_agent: Optional[str] = None,
+    ) -> ServiceResponse:
+        return await ServiceMediaService(self.db).remove(
+            service_id, expected_updated_at,
+            before_commit=self._hook(
+                admin, "service.cover_image_remove", "service", ip_address, user_agent,
+                changes={"cover_image": {"operation": "remove"}},
+            ),
+        )
 
     # ------------------------------------------------------------------ audit
 
@@ -446,6 +481,9 @@ class AdminServiceManagementService:
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
     ) -> CategoryResponse:
+        # Keep the audit snapshot and the structural mutation under the same
+        # hierarchy lock, so another admin cannot change memberships between them.
+        await self.category_domain.repo.lock_hierarchy()
         before = await self.category_domain.get(category_id)
         before_values = {
             field: getattr(before, field)

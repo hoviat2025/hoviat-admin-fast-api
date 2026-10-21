@@ -56,11 +56,9 @@ class RequestBotLoginService:
         self.user_repo = UserBaseRepository(db)
 
     async def execute(self, payload: BotLoginRequest) -> BotLoginResponse:
-        # The Telegram first/last names are combined into our `nickname` field
-        # and are NOT stored as first_name/last_name. Those columns belong to
-        # the user's self-managed profile (e.g. set later by the frontend via
-        # account/profile update); at login we only persist what Telegram
-        # tells us: user_id, nickname, and username when present.
+        # Telegram seeds the public name (`nickname`) for new/unnamed users.
+        # Once set, this name is edited explicitly in the account/admin panel;
+        # later logins must not overwrite it. Legacy first/last names stay intact.
         full_name = " ".join(
             part.strip() for part in (payload.first_name, payload.last_name) if part and part.strip()
         )
@@ -72,7 +70,7 @@ class RequestBotLoginService:
             user_data["username"] = payload.username
 
         # Upsert now so the exchange step can trust that the user exists.
-        await self.user_repo.upsert(user_data)
+        await self.user_repo.upsert(user_data, preserve_existing_nickname=True)
 
         raw_token = secrets.token_urlsafe(24)  # exactly 32 URL-safe chars
         ttl = settings.LOGIN_TOKEN_TTL_SECONDS

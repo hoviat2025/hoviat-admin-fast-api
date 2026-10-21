@@ -10,8 +10,13 @@ from app.modules.sns.auth.services.bot_login import (
     ExchangeTokenService,
     RequestBotLoginService,
 )
+from app.modules.sns.auth.services.dev_login import DevLoginService
 
 _bot_bearer = HTTPBearer(auto_error=False)
+
+
+def get_dev_login_service(db: AsyncSession = Depends(get_db)) -> DevLoginService:
+    return DevLoginService(db)
 
 
 def get_request_bot_login_service(

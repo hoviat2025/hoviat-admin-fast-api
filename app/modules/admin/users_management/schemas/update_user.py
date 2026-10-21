@@ -17,7 +17,7 @@ class UpdateUserRequest(BaseModel):
     username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    nickname: Optional[str] = None
+    nickname: Optional[str] = Field(default=None, max_length=200)
     
     # Editable Contact Info
     phone_number: Optional[str] = None
@@ -68,3 +68,10 @@ class UpdateUserRequest(BaseModel):
         if v == "":
             return None
         return v
+
+    @field_validator("nickname", mode="before")
+    @classmethod
+    def clean_public_name(cls, value):
+        # Admins may explicitly clear a public name; ordinary account edits
+        # require a nonblank name. Both forms store the same trimmed field.
+        return value.strip() or None if isinstance(value, str) else value

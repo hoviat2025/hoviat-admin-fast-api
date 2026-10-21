@@ -1,26 +1,36 @@
-"""
-Service-directory domain.
+# Business directory
 
-This module owns the `services`, `categories`, `service_categories` and
-`service_contacts` tables. It is intentionally separate from the user (SNS)
-domain: the public product searches services, not people.
+This domain owns services, categories, business contacts and country/state
+vocabulary. A business is separate from a personal SNS account. Germany is the
+initial presentation default; the data model uses international country codes.
 
-Scope of the current milestone
-------------------------------
-Milestone 1 provides the data foundation only: models, the SQL migration,
-validation and the repository/service layer. There are no HTTP routes yet.
+## Entry points
 
-  * Milestone 2 wires admin CRUD on top of these services.
-  * Milestone 4 adds the public service-search repository/service.
-  * Milestone 5 adds the discovery/search frontend.
+- Staff administration: `/api/admin/service-management`.
+- Public discovery: `/api/services/services/`, `locations/`, `categories/`,
+  and `{service_id}/`.
+- Assigned owners: `/api/sns/me/services` and `/{service_id}`.
+- Private business bookmarks: `/api/sns/me/service-bookmarks` and `/{service_id}`.
 
-Permission assumptions (unchanged for now)
-------------------------------------------
-  * Only staff admins (the admin JWT, see app/modules/admin) may create or edit
-    services.
-  * `owner_user_id` is a data association, not an authorization grant. It does
-    not, by itself, let a user edit the service.
-  * `show_owner` controls public display of the owner, but public display also
-    requires the owner's own privacy settings to allow it. That combination is
-    enforced by the read layer when the public pages are built (Milestone 3).
-"""
+See [the API guide](../../../docs/sns-business-api.md) and
+[the product direction](../../../docs/sns-product.md).
+
+## Visibility and permissions
+
+Public reads return published listings through a dedicated projection, visible
+business contacts and active category labels. Import provenance, moderation
+status and personal owner associations are excluded. `show_owner` alone never
+authorizes revealing a personal account.
+
+Staff control publication, ownership assignment, categories and relevance.
+Authenticated assigned owners may edit customer-facing business fields and
+contact visibility using a required `expected_updated_at` token. Ownership is
+checked under a row lock before writes; passing a listing id cannot claim it.
+Owner responses include hidden business contacts for editing, but no provenance.
+
+Personal profile/name/phone visibility remains under SNS account privacy and is
+independent of business contact visibility.
+
+SQL migration 17 adds business bookmarks separately from profile bookmarks.
+Domain writes share validation and transactional aggregate saves. Public reads
+never reuse staff response objects.

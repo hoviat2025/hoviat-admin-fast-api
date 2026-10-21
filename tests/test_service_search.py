@@ -3,8 +3,12 @@ Unit tests for the international location model and the shared service filter
 engine. Pure logic, so no database is required.
 """
 
+import sqlite3
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
+
+from sqlalchemy.dialects import sqlite
 
 from app.core.exceptions import ServiceError
 from app.models.service import ServiceStatus
@@ -414,7 +418,7 @@ class StatusPermissionTests(unittest.TestCase):
 
 class SortingAndPagingTests(unittest.TestCase):
     def test_sort_modes_are_named(self):
-        for mode in ("newest", "oldest", "name_asc", "name_desc", "recently_updated"):
+        for mode in ("relevance", "newest", "oldest", "name_asc", "name_desc", "recently_updated"):
             self.assertIn(mode, supported_sort_modes())
 
     def test_every_sort_mode_has_a_unique_tiebreaker(self):
@@ -460,6 +464,115 @@ class SortingAndPagingTests(unittest.TestCase):
         self.assertLessEqual(len(bounded.split()), _MAX_SEARCH_WORDS)
 
 
+class _SqliteReadSession:
+    """Run the builder's actual read SQL in memory; never open PostgreSQL."""
+
+    def __init__(self):
+        from app.models.service import Service
+
+        self.connection = sqlite3.connect(":memory:")
+        self.statements = []
+        # Every projected model column exists, while PostgreSQL write-side
+        # constraints/types are deliberately irrelevant to these read tests.
+        columns = [
+            f'"{column.name}" ' + ("INTEGER PRIMARY KEY" if column.name == "id" else "TEXT")
+            for column in Service.__table__.columns
+        ]
+        self.connection.execute("CREATE TABLE services (" + ",".join(columns) + ")")
+        self.connection.execute("CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, slug TEXT)")
+        self.connection.execute("CREATE TABLE service_categories (service_id INTEGER, category_id INTEGER, is_primary INTEGER)")
+
+    def read(self, statement):
+        sql = str(statement.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True}))
+        self.statements.append(sql)
+        return self.connection.execute(sql)
+
+    async def execute(self, statement):
+        values = [row[0] for row in self.read(statement).fetchall()]
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: values))
+
+    async def scalar(self, statement):
+        return self.read(statement).fetchone()[0]
+
+
+class RelevanceOrderingTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.db = _SqliteReadSession()
+        self.db.connection.executemany(
+            "INSERT INTO services (id,name,description,city,state,status,created_at) VALUES (?,?,?,?,?,?,?)",
+            [
+                (1, "Dentist Alpha", None, None, None, "published", "2020-01-01"),
+                (2, "Clinic Beta", None, None, None, "published", "2024-01-01"),
+                (3, "Clinic Gamma", "A dentist is available", None, None, "published", "2026-01-01"),
+                (4, "Clinic Delta", None, "Dentist", None, "published", "2025-01-01"),
+                (5, "Dentist Epsilon", None, None, None, "published", "2019-01-01"),
+                (6, "Unrelated", None, "Berlin", None, "published", "2027-01-01"),
+                (7, "Dentist Draft", None, None, None, "draft", "2028-01-01"),
+            ],
+        )
+        self.db.connection.executemany(
+            "INSERT INTO categories VALUES (?,?,?)",
+            [(10, "Dentist", "dentist"), (11, "Other dentist", "other-dentist")],
+        )
+        # Several matching categories must not duplicate a business or inflate
+        # the total. Ranking must retain the existing correlated EXISTS shape.
+        self.db.connection.executemany(
+            "INSERT INTO service_categories VALUES (?,?,?)", [(2, 10, 1), (2, 11, 0)]
+        )
+
+    def tearDown(self):
+        self.db.connection.close()
+
+    def builder(self, q=None, sort=None, page=1, size=20):
+        from app.modules.services.search.service_search_service import _category_text_search
+
+        builder = ServiceQueryBuilder(self.db, allow=frozenset()).published_only()
+        if q is not None:
+            builder.text_search(q, extra_predicate=_category_text_search)
+        return builder.sort(sort).paginate(page, size)
+
+    async def test_text_default_orders_name_then_category_then_description_or_location(self):
+        rows, total = await self.builder("dentist").execute()
+        self.assertEqual(rows, [5, 1, 2, 4, 3])
+        self.assertEqual(total, 5)
+
+    async def test_explicit_newest_overrides_text_relevance(self):
+        rows, total = await self.builder("dentist", sort="newest").execute()
+        self.assertEqual(rows, [3, 4, 2, 1, 5])
+        self.assertEqual(total, 5)
+
+    async def test_browsing_defaults_to_newest(self):
+        rows, total = await self.builder().execute()
+        self.assertEqual(rows, [6, 3, 4, 2, 1, 5])
+        self.assertEqual(total, 6)
+
+    async def test_relevance_without_text_falls_back_to_newest(self):
+        self.assertEqual(await self.builder(sort="relevance").execute(), await self.builder().execute())
+
+    async def test_whitespace_query_uses_browsing_order(self):
+        self.assertEqual(await self.builder("   ").execute(), await self.builder().execute())
+
+    async def test_explicit_relevance_matches_context_default_and_breaks_ties_by_id(self):
+        expected = await self.builder("dentist").execute()
+        self.assertEqual(await self.builder("dentist", sort="relevance").execute(), expected)
+        # Equal name hits use ID descending even when the higher ID is older.
+        self.assertEqual(expected[0][:2], [5, 1])
+
+    async def test_pagination_and_count_keep_all_matching_conditions(self):
+        pages = [await self.builder("dentist", page=page, size=2).execute() for page in (1, 2, 3)]
+        self.assertEqual(pages, [([5, 1], 5), ([2, 4], 5), ([3], 5)])
+        page_sql, count_sql = self.db.statements[-2:]
+        self.assertIn("ORDER BY", page_sql)
+        self.assertIn("CASE WHEN", page_sql)
+        self.assertIn("LIMIT 2 OFFSET 4", page_sql.replace("\n", " "))
+        self.assertIn("published", count_sql)
+        self.assertIn("dentist", count_sql)
+        self.assertIn("EXISTS", count_sql)
+        self.assertNotIn("ORDER BY", count_sql)
+        self.assertNotIn("LIMIT", count_sql)
+        self.assertNotIn("OFFSET", count_sql)
+
+
 class LikeEscapingTests(unittest.TestCase):
     def test_wildcards_in_user_input_are_escaped(self):
         from app.modules.services.search.query import _escape_like
@@ -470,6 +583,10 @@ class LikeEscapingTests(unittest.TestCase):
 
 
 class PublicSchemaTests(unittest.TestCase):
+    def test_omitted_sort_remains_distinct_from_explicit_newest(self):
+        self.assertIsNone(PublicServiceSearchParams().sort)
+        self.assertEqual(PublicServiceSearchParams(sort="newest").sort, "newest")
+
     def test_unknown_query_parameter_is_rejected(self):
         # extra="forbid": a misspelled filter must be an error, not a no-op.
         with self.assertRaises(Exception):

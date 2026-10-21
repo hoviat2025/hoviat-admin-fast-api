@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CategoryResponse(BaseModel):
@@ -9,6 +9,8 @@ class CategoryResponse(BaseModel):
 
     id: int
     parent_id: Optional[int] = None
+    parent_ids: list[int] = Field(default_factory=list)
+    level: Literal[1, 2] = 1
     name: str
     slug: str
     description: Optional[str] = None
@@ -20,7 +22,7 @@ class CategoryResponse(BaseModel):
 
 class CategoryTreeResponse(CategoryResponse):
     """A category together with its direct children, for admin tree views."""
-    children: List["CategoryTreeResponse"] = []
+    children: List["CategoryTreeResponse"] = Field(default_factory=list)
 
 
 CategoryTreeResponse.model_rebuild()

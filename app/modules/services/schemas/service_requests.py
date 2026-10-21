@@ -232,9 +232,12 @@ class PublicServiceSearchParams(BaseModel):
     persian_provider: Optional[TriStateFilter] = None
     persian_language: Optional[TriStateFilter] = None
     persian_service: Optional[TriStateFilter] = None
-    sort: str = Field(default="newest", description="One of: newest, oldest, name_asc, name_desc, recently_updated.")
+    sort: Optional[str] = Field(
+        default=None,
+        description="One of: relevance, newest, oldest, name_asc, name_desc, recently_updated. Omitted: relevance for text search, newest for browsing. Relevance without text falls back to newest.",
+    )
     page: int = Field(default=1, ge=1)
-    size: int = Field(default=20, ge=1, le=100)
+    size: int = Field(default=10, ge=1, le=100)
 
 
 class AdminServiceSearchParams(BaseModel):
