@@ -50,6 +50,9 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 HTTP = build_opener(NoRedirect)
+# workers.dev Browser Integrity Check can reject Python's library-default UA
+# with 1010 before the request reaches our Worker. Identify this client honestly.
+HTTP.addheaders = [('User-Agent', 'Hoviat-Staging-Setup/1.0')]
 
 
 def run(args, **kwargs):
@@ -182,8 +185,14 @@ def main():
     secrets = [worker_secret(label) for label in ('Login Worker', 'Sender Worker')]
     print('3/6: Checking deployed Worker webhook protection; no messages are sent.', flush=True)
     for label, url, secret in zip(('Login', 'Sender'), (login_url, sender_url), secrets):
-        if post(url, {'update_id': 0})[0] != 401 or post(url, {'update_id': 0}, {'X-Telegram-Bot-Api-Secret-Token': secret})[0] != 200:
-            raise Refused(label + ' Worker protection/readiness probe failed; deploy matching code and secrets first.')
+        without_secret = post(url, {'update_id': 0})[0]
+        if without_secret != 401:
+            raise Refused(label + ' Worker returned HTTP ' + str(without_secret)
+                          + ' without a webhook password; expected 401. No staging changes made.')
+        with_secret = post(url, {'update_id': 0}, {'X-Telegram-Bot-Api-Secret-Token': secret})[0]
+        if with_secret != 200:
+            raise Refused(label + ' Worker returned HTTP ' + str(with_secret)
+                          + ' with the webhook password; expected 200. Check the deployed WEBHOOK_SECRET/configuration.')
     old_site = SITE.read_text()
     if SITE.stat().st_uid != 0 or old_site.count(ANCHOR) != 1:
         raise Refused('Unexpected staging Nginx owner or admin server anchor.')

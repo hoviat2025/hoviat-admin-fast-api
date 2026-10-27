@@ -54,3 +54,8 @@ If preflight fails, no staging configuration or database is changed. If a later
 step fails, the script requests both staging services stay stopped and reports
 the phase/private backup location. Keep the snapshot and inspect the partial
 state before retrying. Production is unaffected.
+
+The setup client sends `User-Agent: Hoviat-Staging-Setup/1.0`. Cloudflare's
+Browser Integrity Check on workers.dev can reject Python urllib's default user
+agent with HTTP 403 / error 1010 before executing Worker code. This client header
+does not bypass or disable the Worker's webhook password authentication.
