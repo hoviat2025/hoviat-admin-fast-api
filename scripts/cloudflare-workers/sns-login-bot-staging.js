@@ -102,10 +102,16 @@ function diagnostic(event, details = {}) {
 }
 
 function failure(code, status) {
-  const error = new Error(code);
-  error.safeCode = code;
-  error.safeStatus = status;
-  return error;
+  return new UpstreamFailure(code, status);
+}
+
+// Declared fields keep Cloudflare's JavaScript editor type checking accurate.
+class UpstreamFailure extends Error {
+  constructor(code, status) {
+    super(code);
+    this.safeCode = code;
+    this.safeStatus = status;
+  }
 }
 
 function logFailure(stage, error) {
@@ -312,7 +318,8 @@ async function readJson(message, timeoutMs) {
         bytes.set(chunk, offset);
         offset += chunk.byteLength;
       }
-      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      // Supply both options required by Cloudflare's TextDecoder types.
+      return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes));
     };
     return await Promise.race([
       read(),
