@@ -27,7 +27,8 @@ Use a separate Worker such as `hoviat-login-staging`. Paste the ES module source
 into its code editor. Fill the three empty strings in the `SETTINGS` block at the
 very top of the code directly in Cloudflare. The URL defaults are already correct
 for staging. This is the user's preferred setup; Variables and Secrets bindings
-are optional and override the matching code values if present.
+are optional and supply only settings left blank in the code. Explicit values at
+the top of the code take precedence, matching the user's preferred setup.
 
 | Name in `SETTINGS` | Optional binding type | Value |
 | --- | --- | --- |
@@ -36,6 +37,13 @@ are optional and override the matching code values if present.
 | `WEBHOOK_SECRET` | Secret | A separate random URL-safe value; use the same value when registering the webhook |
 | `API_ORIGIN` | Text, optional | `https://sns-admin-stage.185.202.113.95.nip.io` (already the source default) |
 | `WEBSITE_URL` | Text, optional | `https://sns-stage.185.202.113.95.nip.io/login` (already the source default) |
+
+`EXPECTED_BOT_USERNAME` at the top of the code is `hoviatlogintestbot`. For real
+private messages/callbacks the Worker verifies its bot token using `getMe` before
+trying to send a reply. Change this name if using a different test bot.
+`DEBUG=true` emits safe `SNS_LOGIN` events containing stages/status codes and the
+bot username. It never logs tokens, login codes, private message bodies, raw
+exceptions or upstream response bodies. Set it to false after diagnosing.
 
 Read the API secret privately on the VPS (do not paste the output into chat):
 
