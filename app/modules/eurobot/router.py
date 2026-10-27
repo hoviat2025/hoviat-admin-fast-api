@@ -28,12 +28,12 @@ router.include_router(
     dependencies=[Depends(verify_bot_token)] 
 )
 
-# 5. Mount Channels Webhook (UNPROTECTED/PUBLIC)
-# Result: /hoviat/v1/eurobot/set_group_message_id_test (No Token)
+# 5. Mount Channels Webhook (sender authentication is on the child router).
+# Result: /hoviat/v1/eurobot/set_group_message_id_test (historical `_test` name)
 # We use prefix="" so it sits directly under /eurobot/ as requested
 router.include_router(
     channels_webhook_router,
     prefix="", 
     tags=["Eurobot Webhooks"],
-    # Explicitly NO dependencies list here
+    # Authentication is declared on channels_webhook_router itself.
 )

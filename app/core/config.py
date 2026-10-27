@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # disabling alone does not stop request handlers from using these clients.
     TELEGRAM_API_ENABLED: bool = True
     MEDIA_WRITES_ENABLED: bool = True
+
+    # Shared with the sender webhook Worker (API_SECRET in its top settings).
+    # Empty means sender callbacks are rejected, never accepted anonymously.
+    SENDER_WEBHOOK_API_SECRET: str = ""
     
     # Secret key used for cryptographic signing and security hashes
     SECRET_KEY: str

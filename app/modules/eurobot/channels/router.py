@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 from app.core.database import get_db
 from app.core.schemas import StandardResponse
+from app.shared.sender_webhook_auth import verify_sender_worker
 
 # Input Schemas
 from app.modules.eurobot.channels.schemas.update_post_request import UpdateChannelPostRequest
@@ -24,8 +25,10 @@ from app.modules.eurobot.channels.services.set_public_message_service import Set
 # 1. Protected Router
 router = APIRouter()
 
-# 2. Webhook Router (Public)
-telegram_webhook_router = APIRouter()
+# 2. Webhook Router (historically public; now authenticates the sender Worker).
+# `_test` is a historical route name also used in production. The API hostname,
+# not this suffix, determines which deployment/database receives the callback.
+telegram_webhook_router = APIRouter(dependencies=[Depends(verify_sender_worker)])
 
 
 # --- PROTECTED ENDPOINTS ---
@@ -58,7 +61,7 @@ async def set_public_message_id_test(
 ):
     """
     Finds user by Main Channel Post ID (external_reply) and sets Public Channel IDs.
-    Public Access.
+    Requires the sender Worker's shared API secret.
     """
     service = SetPublicMessageService(db)
     updated_user = await service.execute(payload)

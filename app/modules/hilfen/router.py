@@ -13,7 +13,7 @@ router.include_router(
     dependencies=[Depends(verify_hilfen_token)],
 )
 
-# Mount Unprotected Webhook Endpoints (Telegram APIs)
+# Mount webhook endpoints (sender authentication is on the child router).
 router.include_router(
     channels_router,
     tags=["Hilfen Webhooks"]
