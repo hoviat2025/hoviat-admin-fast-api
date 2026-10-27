@@ -272,7 +272,9 @@ async function fetchJson(url, options, timeoutMs) {
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
-      redirect: "error",
+      // Workers supports manual/follow, not the browser's redirect:"error".
+      // Reject 3xx below rather than following a redirect with credentials.
+      redirect: "manual",
     });
     if (!response.ok) {
       await response.body?.cancel();
