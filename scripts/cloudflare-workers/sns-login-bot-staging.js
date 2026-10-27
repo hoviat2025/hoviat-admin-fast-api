@@ -1,11 +1,20 @@
-// Paste this ES module into a Cloudflare Worker. Edit defaults here or set bindings.
+// EDIT SETTINGS HERE in Cloudflare's code editor. Fill the three empty strings.
+const SETTINGS = {
+  BOT_TOKEN: "", // Paste the NEW TEST bot's BotFather token here.
+  API_SECRET: "", // Staging backend's LOGIN_BOT_API_SECRET.
+  WEBHOOK_SECRET: "", // Same password used when registering Telegram's webhook.
+  API_ORIGIN: "https://sns-admin-stage.185.202.113.95.nip.io",
+  WEBSITE_URL: "https://sns-stage.185.202.113.95.nip.io/login",
+};
+
+// Cloudflare bindings are optional; if present, they override the values above.
 function config(env) {
   return {
-    apiOrigin: env.API_ORIGIN ?? "https://sns-admin-stage.185.202.113.95.nip.io",
-    botToken: env.BOT_TOKEN, // Secret: this login bot's BotFather token.
-    apiSecret: env.API_SECRET, // Secret: backend LOGIN_BOT_API_SECRET.
-    webhookSecret: env.WEBHOOK_SECRET, // Secret: same as setWebhook.secret_token.
-    websiteUrl: env.WEBSITE_URL ?? "https://sns-stage.185.202.113.95.nip.io/login",
+    apiOrigin: env.API_ORIGIN ?? SETTINGS.API_ORIGIN,
+    botToken: env.BOT_TOKEN ?? SETTINGS.BOT_TOKEN,
+    apiSecret: env.API_SECRET ?? SETTINGS.API_SECRET,
+    webhookSecret: env.WEBHOOK_SECRET ?? SETTINGS.WEBHOOK_SECRET,
+    websiteUrl: env.WEBSITE_URL ?? SETTINGS.WEBSITE_URL,
   };
 }
 const LOGIN_CALLBACK = "web_login";

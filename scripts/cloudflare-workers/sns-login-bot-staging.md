@@ -24,9 +24,12 @@ old file on validation/reload failure. Production vhosts are not edited.
 ## 3. Create a separate Cloudflare Worker
 
 Use a separate Worker such as `hoviat-login-staging`. Paste the ES module source
-into its code editor. In the Worker's Settings -> Variables and Secrets, set:
+into its code editor. Fill the three empty strings in the `SETTINGS` block at the
+very top of the code directly in Cloudflare. The URL defaults are already correct
+for staging. This is the user's preferred setup; Variables and Secrets bindings
+are optional and override the matching code values if present.
 
-| Name | Type | Value |
+| Name in `SETTINGS` | Optional binding type | Value |
 | --- | --- | --- |
 | `BOT_TOKEN` | Secret | New test bot's BotFather token |
 | `API_SECRET` | Secret | Staging backend's `LOGIN_BOT_API_SECRET` |
