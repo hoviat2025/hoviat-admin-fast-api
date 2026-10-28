@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Path, Query
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -51,3 +53,28 @@ async def update_my_service(
     return StandardResponse.success(
         data=await service.update(user.user_id, service_id, payload)
     )
+
+
+@router.post("/{service_id}/cover-image", response_model=StandardResponse[OwnedServiceResponse])
+async def upload_my_service_cover_image(
+    service_id: int = Path(ge=1),
+    file: UploadFile = File(..., description="JPEG, PNG or WebP, at most 5 MB"),
+    expected_updated_at: datetime = Form(...),
+    user: User = Depends(get_current_sns_user),
+    service: OwnedServiceService = Depends(get_owned_service_service),
+):
+    return StandardResponse.success(data=await service.replace_cover_image(
+        user.user_id, service_id, file, expected_updated_at,
+    ))
+
+
+@router.delete("/{service_id}/cover-image", response_model=StandardResponse[OwnedServiceResponse])
+async def remove_my_service_cover_image(
+    service_id: int = Path(ge=1),
+    expected_updated_at: datetime = Query(...),
+    user: User = Depends(get_current_sns_user),
+    service: OwnedServiceService = Depends(get_owned_service_service),
+):
+    return StandardResponse.success(data=await service.remove_cover_image(
+        user.user_id, service_id, expected_updated_at,
+    ))

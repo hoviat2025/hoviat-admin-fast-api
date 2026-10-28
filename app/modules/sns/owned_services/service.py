@@ -1,5 +1,8 @@
 """Owner authorization around the existing transactional service domain."""
 
+from datetime import datetime
+
+from fastapi import UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -11,6 +14,7 @@ from app.modules.services.schemas.service_requests import (
     ServiceCreateRequest,
 )
 from app.modules.services.services.service_service import ServiceService
+from app.modules.services.services.service_media import ServiceMediaService
 from app.modules.sns.owned_services.schemas import (
     OwnedServiceResponse,
     OwnedServiceUpdateRequest,
@@ -103,4 +107,22 @@ class OwnedServiceService:
         # The domain commits before reading its result. Ownership might change
         # after that commit; authorize a fresh, locked read before returning any
         # private business contacts to this user.
+        return await self.get(user_id, service_id)
+
+    async def replace_cover_image(
+        self, user_id: int, service_id: int, file: UploadFile,
+        expected_updated_at: datetime,
+    ):
+        await ServiceMediaService(self.db).replace(
+            service_id, file, expected_updated_at, owner_user_id=user_id,
+        )
+        # Recheck ownership after commit before returning private editing data.
+        return await self.get(user_id, service_id)
+
+    async def remove_cover_image(
+        self, user_id: int, service_id: int, expected_updated_at: datetime,
+    ):
+        await ServiceMediaService(self.db).remove(
+            service_id, expected_updated_at, owner_user_id=user_id,
+        )
         return await self.get(user_id, service_id)

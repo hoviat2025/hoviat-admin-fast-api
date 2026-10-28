@@ -27,9 +27,14 @@ class ServiceMediaService:
         self.db = db
         self.domain = ServiceService(db)
 
-    async def _locked_service(self, service_id: int, expected_updated_at: datetime):
+    async def _locked_service(
+        self, service_id: int, expected_updated_at: datetime,
+        *, owner_user_id: int | None = None,
+    ):
         service = await self.domain.services.get_for_update(service_id)
-        if service is None:
+        # Check the freshly locked row, not a prior ownership lookup: an admin
+        # may have reassigned the listing while the upload request was pending.
+        if service is None or (owner_user_id is not None and service.owner_user_id != owner_user_id):
             raise ServiceError("SERVICE_NOT_FOUND", "Service not found", 404)
         if updated_at_conflicts(service.updated_at, expected_updated_at):
             raise ServiceError(
@@ -39,13 +44,13 @@ class ServiceMediaService:
 
     async def replace(
         self, service_id: int, file: UploadFile, expected_updated_at: datetime,
-        *, before_commit: BeforeCommit | None = None,
+        *, before_commit: BeforeCommit | None = None, owner_user_id: int | None = None,
     ):
         new_key = None
         committed = False
         try:
             storage_client.require_writes_enabled()
-            service = await self._locked_service(service_id, expected_updated_at)
+            service = await self._locked_service(service_id, expected_updated_at, owner_user_id=owner_user_id)
             if not service_media_base():
                 raise ServiceError("SERVICE_MEDIA_NOT_CONFIGURED", "A public service media URL must be configured before uploading covers.", 503)
             raw = await self._read_bounded(file)
@@ -88,11 +93,11 @@ class ServiceMediaService:
 
     async def remove(
         self, service_id: int, expected_updated_at: datetime,
-        *, before_commit: BeforeCommit | None = None,
+        *, before_commit: BeforeCommit | None = None, owner_user_id: int | None = None,
     ):
         try:
             storage_client.require_writes_enabled()
-            service = await self._locked_service(service_id, expected_updated_at)
+            service = await self._locked_service(service_id, expected_updated_at, owner_user_id=owner_user_id)
             old_key = service.cover_image_path
             if old_key is not None:
                 await self.domain.services.update(service_id, {"cover_image_path": None})

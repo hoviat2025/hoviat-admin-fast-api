@@ -10,6 +10,11 @@ initial presentation default; the data model uses international country codes.
 - Public discovery: `/api/services/services/`, `locations/`, `categories/`,
   and `{service_id}/`.
 - Assigned owners: `/api/sns/me/services` and `/{service_id}`.
+- Assigned-owner cover: `POST /api/sns/me/services/{service_id}/cover-image`
+  accepts multipart `file` (JPEG/PNG/WebP, maximum 5 MB) and
+  `expected_updated_at`; `DELETE` on the same URL takes `expected_updated_at`
+  as a query parameter. Both return the refreshed owner response. Uploads reuse
+  the managed R2 cover storage and reject stale versions with HTTP 409.
 - Private business bookmarks: `/api/sns/me/service-bookmarks` and `/{service_id}`.
 
 See [the API guide](../../../docs/sns-business-api.md) and
