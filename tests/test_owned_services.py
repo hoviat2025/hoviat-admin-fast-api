@@ -23,6 +23,7 @@ from app.models.service import Service, ServiceStatus
 from app.models.service_category import ServiceCategory
 from app.models.service_contact import ServiceContact
 from app.modules.services.schemas.service_responses import ServiceResponse
+from app.modules.services.repositories.service import ServiceRepository
 from app.modules.sns.owned_services.schemas import (
     OwnedServiceResponse,
     OwnedServiceUpdateRequest,
@@ -296,6 +297,25 @@ class OwnerReadTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(response.contacts[0].is_visible)
         self.assertEqual(response.categories[0].category.slug, "health")
         self.assertNotIn("source", response.model_dump())
+
+    async def test_new_listing_person_preference_starts_on(self):
+        response = await self.service.get(40, 11)
+        self.assertTrue(response.owner_show_profile)
+        # Admin permission remains independent of the new person preference.
+        self.assertFalse(response.admin_allows_owner_visibility)
+
+    async def test_same_owner_assignment_preserves_an_explicit_opt_out(self):
+        repo = ServiceRepository(self.db)
+        await repo.update(11, {"owner_show_profile": False})
+        row = await repo.update(11, {"owner_user_id": 40, "name": "Updated business"})
+        self.assertFalse(row.owner_show_profile)
+
+    async def test_new_person_assignment_uses_the_new_visible_preference(self):
+        repo = ServiceRepository(self.db)
+        await repo.update(11, {"owner_show_profile": False})
+        row = await repo.update(11, {"owner_user_id": 99})
+        self.assertTrue(row.owner_show_profile)
+        self.assertFalse(row.show_owner)
 
     async def test_stale_identity_map_cannot_authorize_a_reassigned_listing(self):
         stale = self.session.get(Service, 11)

@@ -87,10 +87,11 @@ class ServiceRepository:
             if "owner_user_id" in data:
                 from sqlalchemy import case
                 data = dict(data)
-                # Consent belongs to the current assignment, not the business's
-                # next owner. SQL comparison also handles NULL reassignment.
+                # A new person assignment starts with visibility on; global
+                # account privacy still gates public reads. Preserve an explicit
+                # opt-out when the same person remains assigned.
                 data["owner_show_profile"] = case(
-                    (Service.owner_user_id.is_distinct_from(data["owner_user_id"]), False),
+                    (Service.owner_user_id.is_distinct_from(data["owner_user_id"]), True),
                     else_=data.get("owner_show_profile", Service.owner_show_profile),
                 )
             await self.db.execute(

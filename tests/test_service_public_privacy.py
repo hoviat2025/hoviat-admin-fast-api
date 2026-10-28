@@ -23,6 +23,8 @@ from app.modules.services.public.router import (
     router,
 )
 from app.modules.services.public.serialization import to_public_service
+from app.modules.services.public.related_person import related_person
+from app.core.exceptions import ServiceError
 from app.modules.services.schemas.service_requests import (
     AdminServiceSearchParams,
     PublicServiceSearchParams,
@@ -64,6 +66,26 @@ def listing(*, show_owner=False):
 
 
 class PublicServicePrivacyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_related_person_explicit_opt_out_is_still_respected(self):
+        db = SimpleNamespace(execute=AsyncMock(
+            return_value=SimpleNamespace(first=lambda: SimpleNamespace(
+                owner_user_id=40, show_owner=True, owner_show_profile=False,
+            ))
+        ))
+        self.assertIsNone(await related_person(db, 7))
+
+    async def test_related_person_account_privacy_still_overrides_visible_defaults(self):
+        db = SimpleNamespace(execute=AsyncMock(
+            return_value=SimpleNamespace(first=lambda: SimpleNamespace(
+                owner_user_id=40, show_owner=True, owner_show_profile=True,
+            ))
+        ))
+        with patch(
+            "app.modules.services.public.related_person.GetUserProfileService.execute",
+            AsyncMock(side_effect=ServiceError("USER_NOT_FOUND", "Not found", 404)),
+        ):
+            self.assertIsNone(await related_person(db, 7))
+
     def app(self):
         app = FastAPI()
         register_exception_handlers(app)

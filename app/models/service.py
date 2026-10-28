@@ -64,9 +64,10 @@ class Service(Base):
     # Public display also requires the owner's own privacy settings to permit
     # it; that check belongs to the read layer, not here.
     show_owner = Column(Boolean, server_default="false", nullable=False)
-    # Independent consent from the assigned person, per business. Admins cannot
-    # opt a user in; reassignment resets it. Global personal privacy also applies.
-    owner_show_profile = Column(Boolean, server_default="false", nullable=False)
+    # Per-business visibility preference starts on for new assignments. A person
+    # can turn it off, and their global personal privacy always applies. Existing
+    # stored preferences are not changed by this default.
+    owner_show_profile = Column(Boolean, default=True, server_default="true", nullable=False)
 
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)

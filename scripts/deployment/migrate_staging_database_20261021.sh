@@ -23,6 +23,7 @@ readonly migrations=(
     '20261018_20_add_owner_profile_consent.sql'
     '20261020_21_canonical_cities_and_leaf_categories.sql'
     '20261020_22_preserve_sns_privacy_defaults.sql'
+    '20261028_23_default_new_owner_profile_visibility.sql'
 )
 
 if [[ "$(hostname)" != 'srv5089629844' ]]; then
