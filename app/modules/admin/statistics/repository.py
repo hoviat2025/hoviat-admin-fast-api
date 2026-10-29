@@ -4,8 +4,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
+from app.models.service import Service, ServiceStatus
 from app.modules.admin.statistics.schemas import (
     AdminStatisticsResponse,
+    BusinessStatistics,
     CountryStatistics,
     JoinPeriodCounts,
     NewJoinStatistics,
@@ -77,6 +79,20 @@ class AdminStatisticsRepository:
         row = (await self.db.execute(statement)).one()
         values = row._mapping
 
+        # Count listings directly, without category/contact joins that could
+        # multiply a business into several rows. This is one aggregate query;
+        # no business records or private contact fields are loaded into memory.
+        business_values = (await self.db.execute(select(
+            func.count(Service.id).label("total_businesses"),
+            func.count(Service.id).filter(
+                Service.status == ServiceStatus.published
+            ).label("published_businesses"),
+            func.count(Service.id).filter(
+                Service.cover_image_path.is_(None)
+                | (func.trim(Service.cover_image_path) == "")
+            ).label("without_photo"),
+        ))).one()._mapping
+
         def periods(prefix: str) -> JoinPeriodCounts:
             return JoinPeriodCounts(
                 last_24_hours=values[f"{prefix}_last_24_hours"] or 0,
@@ -103,4 +119,5 @@ class AdminStatisticsRepository:
                 other=values["other"] or 0,
                 unknown=values["unknown"] or 0,
             ),
+            businesses=BusinessStatistics(**business_values),
         )

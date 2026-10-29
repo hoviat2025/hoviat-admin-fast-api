@@ -28,7 +28,14 @@ class CountryStatistics(BaseModel):
     unknown: int
 
 
+class BusinessStatistics(BaseModel):
+    total_businesses: int = Field(..., description="All business rows, including archived listings")
+    published_businesses: int = Field(..., description="Listings with published status")
+    without_photo: int = Field(..., description="Listings with a missing or blank cover image key")
+
+
 class AdminStatisticsResponse(BaseModel):
     overview: StatisticsOverview
     new_joins: NewJoinStatistics
     countries: CountryStatistics
+    businesses: BusinessStatistics
