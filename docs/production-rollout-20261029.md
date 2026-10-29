@@ -5,6 +5,20 @@ edit, deployment or restart is authorized by this document itself. The user will
 run the reviewed VPS commands. Finish the clone rehearsal and configuration checks
 before preparing the final cutover block.
 
+### Confirmed rehearsal checkpoint
+
+The user ran the rehearsal on the VPS successfully. Migrations 12–23 committed
+on `hoviat_prod_rehearsal_20261029` in 809 ms combined (individual timings include
+the psql process overhead). This does not measure live lock contention.
+All 13,757 user rows and 13,757 privacy rows were preserved field-for-field;
+copied login-token, queue-job and Telegram-mapping counts were unchanged.
+The new directory has zero businesses, 18 seeded categories, 16 states and 70
+cities. This is schema/reference-data setup, not a staging-data transfer.
+
+Protected snapshot:
+`/var/lib/postgresql/hoviat-prod-rehearsal-20261029/production.dump`.
+Production services, configuration, data and webhooks were not changed.
+
 ## What stays live during preparation
 
 - VPS: `185.202.113.95`, hostname `srv5089629844`.
@@ -54,6 +68,18 @@ Prepare new private environment files next to the new release; leave the running
 release's environment untouched. Inspect systemd environment-file paths and
 drop-ins as well, because service-level variables can override dotenv values.
 Do not print credentials into logs or chat.
+
+The candidate-venv helper
+`scripts/deployment/configure_production_release_20261029.py` prepares only NEW
+files after validating current production settings against the running API.
+Invoke it from the candidate backend with sudo after creating its venv and
+cloning the two pinned frontend sources. It preserves live files and writes
+`backend/.env`, `consumer/.env.local`, and `admin/.env.production` with private
+permissions. Worker copy/paste settings are retained in
+`/home/bardia/apps/sns-production/private/worker-settings-20261029.env` without
+printing them. Existing outputs are deliberately not overwritten on a rerun.
+The helper starts no app and changes no database, unit, webhook or Cloudflare
+configuration. Build sequentially only after it succeeds.
 
 | Component | Required production values |
 | --- | --- |
