@@ -81,6 +81,37 @@ printing them. Existing outputs are deliberately not overwritten on a rerun.
 The helper starts no app and changes no database, unit, webhook or Cloudflare
 configuration. Build sequentially only after it succeeds.
 
+**Actual manual-preparation checkpoint:** the user chose command-guided editing
+instead of that automatic environment helper. Current live envs were copied into
+the candidate, then targeted edits added the explicit backend flags and a new
+sender API secret, and set the consumer loopback API URLs. Backups are beside the
+candidate env files. Both frontend builds and backend dependency/syntax checks
+passed; old production services remained active. Do not run the exclusive
+environment-creation helper over these already prepared files.
+
+`prepare_production_workers_20261029.py` now renders private, prefilled sender and
+production-login JavaScript in the private directory. It reuses the sender API
+secret already saved in candidate `.env`; generates the two Telegram webhook
+secrets once; and records them in `production-worker-settings-20261029.json`.
+If the earlier optional env helper was used, its private settings are validated
+and reused instead of rotating them. Download/copy the two private JS files to
+Cloudflare; do not paste their credential-filled contents into chat or Git.
+This preparation makes no network call and registers no webhook.
+
+### Admin dependency review before cutover
+
+The unused direct Zod dependency was removed in admin commit `8c675f1` on
+`codex/production-admin-security-20261029`. Only package manifests changed; the
+production build passed and no transitive Zod remains. Runtime audit then reports
+two moderate React Router findings and no high findings. The reviewed app uses
+`createRoot` plus `BrowserRouter`, no SSR hydration, and fixed/internal route
+destinations rather than attacker-supplied redirect paths. Those reviewed flows
+do not match the advisories' prerequisites; this is an applicability assessment,
+not a claim that the vulnerable dependency is patched. A separate router-major
+upgrade is deferred. Build tooling findings are not exposed through a production
+Vite dev server: production serves the static build only. Do not run blanket
+`npm audit fix --force` during this rollout.
+
 | Component | Required production values |
 | --- | --- |
 | Backend | Production DB target; `APP_MODE=all`; `DEV_LOGIN_ENABLED=false`; `DISABLE_BACKGROUND_WORKERS=false`; `TELEGRAM_API_ENABLED=true`; `MEDIA_WRITES_ENABLED=true`. |
