@@ -1,5 +1,6 @@
 """Add-only category imports shared by category-only and business imports."""
 import json
+from dataclasses import dataclass
 
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -10,6 +11,17 @@ from app.modules.admin.service_management.services.admin_service_service import 
 from app.modules.services.schemas.category_requests import CategoryCreateRequest
 from app.modules.services.services.category_service import CategoryService
 from app.modules.services.validation import normalise_slug
+
+
+@dataclass(frozen=True)
+class ImportActor:
+    """Authenticated audit identity, independent of ORM rollback expiration."""
+    id: int
+    username: str
+
+    @classmethod
+    def capture(cls, admin):
+        return cls(id=admin.id, username=admin.username)
 
 
 class DeferredCommit:
@@ -78,7 +90,7 @@ class CategoryResolver:
 
 class CategoryImporter:
     def __init__(self, db, admin, ip=None, ua=None):
-        self.db, self.admin, self.ip, self.ua = db, admin, ip, ua
+        self.db, self.admin, self.ip, self.ua = db, ImportActor.capture(admin), ip, ua
 
     async def run(self, batch):
         if len(json.dumps(batch.model_dump(mode="json")).encode()) > 2 * 1024 * 1024:

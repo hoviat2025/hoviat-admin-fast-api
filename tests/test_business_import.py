@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.core.exceptions import ServiceError
 from app.models.base import Base
 from app.models.service import Service
+from app.models.admin import Admin
+from app.models.admin_audit_log import AdminAuditLog
 from app.models.category import Category
 from app.models.service_bookmark import ServiceBookmark  # register reset dependencies
 from app.modules.admin.service_management.schemas.import_businesses import BusinessImportBatch, BusinessImportRow, CategoryImportBatch
@@ -109,7 +111,7 @@ class ImportTransactionTests(unittest.IsolatedAsyncioTestCase):
     async def test_preview_rolls_back_and_apply_commits_per_record(self):
         for preview in (True, False):
             db = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
-            importer = BusinessImporter(db, SimpleNamespace())
+            importer = BusinessImporter(db, SimpleNamespace(id=1, username="test"))
             importer._row = AsyncMock(return_value={"action": "created"})
             await importer.run(BusinessImportBatch(rows=[BusinessImportRow.model_validate(sample())], preview=preview))
             self.assertEqual(db.rollback.await_count, int(preview))
@@ -117,7 +119,7 @@ class ImportTransactionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_row_error_is_reported_and_rolled_back(self):
         db = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
-        importer = BusinessImporter(db, SimpleNamespace())
+        importer = BusinessImporter(db, SimpleNamespace(id=1, username="test"))
         importer._row = AsyncMock(side_effect=ServiceError("INVALID_INPUT", "Unknown city", 422))
         result = await importer.run(BusinessImportBatch(rows=[BusinessImportRow.model_validate(sample())], preview=False))
         self.assertEqual(result["results"][0]["action"], "error")
@@ -156,6 +158,36 @@ class ImportDatabaseTests(unittest.IsolatedAsyncioTestCase):
     def batch(self, preview=True, mode="add", row=None):
         return BusinessImportBatch.model_validate({"rows": [row or sample()], "definitions": DEFINITIONS,
                                                    "preview": preview, "mode": mode})
+
+    async def test_multirow_preview_and_failed_row_with_database_admin(self):
+        # Production auth supplies a mapped Admin in this same session. Rollback
+        # expires that object, even when expire_on_commit=False.
+        self.audit.stop()
+        admin = Admin(username="import-regression", password_hash="not-a-login-hash")
+        self.db.add(admin)
+        await self.db.commit()
+        admin_id = admin.id
+        rows = []
+        for index in range(1, 4):
+            row = sample()
+            row["metadata"]["source_item_index"] = index
+            row["service"]["external_id"] = f"example:42:{index}"
+            rows.append(row)
+        preview = BusinessImportBatch(definitions=DEFINITIONS, rows=rows)
+        result = await BusinessImporter(self.db, admin).run(preview)
+        self.assertEqual([r["action"] for r in result["results"]], ["created"] * 3, result)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Service)), 0)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(AdminAuditLog)), 0)
+
+        await self.db.refresh(admin)
+        broken = copy.deepcopy(rows)
+        broken[0]["google_maps_url"] = "https://invalid.example/maps"
+        batch = BusinessImportBatch(definitions=DEFINITIONS, rows=broken, preview=False)
+        result = await BusinessImporter(self.db, admin).run(batch)
+        self.assertEqual([r["action"] for r in result["results"]], ["error", "created", "created"], result)
+        logs = (await self.db.execute(select(AdminAuditLog))).scalars().all()
+        self.assertTrue(logs)
+        self.assertTrue(all(log.admin_id == admin_id and log.admin_username == "import-regression" for log in logs))
 
     async def test_category_only_preview_retry_unused_suggestions_and_conflict(self):
         importer = CategoryImporter(self.db, SimpleNamespace(id=1, username="test"))

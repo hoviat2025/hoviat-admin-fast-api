@@ -10,7 +10,7 @@ from app.models.service import Service
 from app.modules.admin.service_management.services.admin_service_service import AdminServiceManagementService
 from app.modules.services.schemas.service_requests import ServiceAggregateSaveRequest, ServiceCategoryInput
 from app.modules.services.services.service_service import ServiceService
-from app.modules.admin.service_management.services.category_import import CategoryResolver, DeferredCommit
+from app.modules.admin.service_management.services.category_import import CategoryResolver, DeferredCommit, ImportActor
 
 
 class _Services(DeferredCommit, ServiceService):
@@ -20,7 +20,9 @@ class _Services(DeferredCommit, ServiceService):
 class BusinessImporter:
     def __init__(self, db, admin, ip=None, ua=None):
         self.db = db
-        self.admin = admin
+        # Per-row preview/error rollback expires ORM instances, including the
+        # authenticated Admin. Preserve only its already-verified audit identity.
+        self.admin = ImportActor.capture(admin)
         self.ip, self.ua = ip, ua
 
     async def run(self, batch):
