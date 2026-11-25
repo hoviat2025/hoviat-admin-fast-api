@@ -2,19 +2,93 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.service import ServiceStatus
 from app.modules.services.schemas.service_requests import ServiceCreateRequest
+from app.modules.services.validation import normalise_slug
+from app.core.exceptions import ServiceError
+
+
+def canonical_key(value):
+    try:
+        return normalise_slug(value)
+    except ServiceError as exc:
+        raise ValueError(exc.message) from exc
 
 
 class CategoryDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    key: str = Field(min_length=1, max_length=200)
+    key: str = Field(min_length=1, max_length=200, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     name: str = Field(min_length=1, max_length=200)
     primary_parent_key: str | None = None
     parent_keys: list[str] = Field(default_factory=list, max_length=30)
     reason: str | None = None
+
+    @field_validator("key", mode="before")
+    @classmethod
+    def normalise_key(cls, value):
+        return canonical_key(value) if isinstance(value, str) else value
+
+    @field_validator("primary_parent_key")
+    @classmethod
+    def normalise_primary(cls, value):
+        return canonical_key(value) if value is not None else value
+
+    @field_validator("parent_keys")
+    @classmethod
+    def normalise_parents(cls, value):
+        return [canonical_key(key) for key in value]
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        if not value.strip():
+            raise ValueError("Category name cannot be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def hierarchy(self):
+        if len(set(self.parent_keys)) != len(self.parent_keys):
+            raise ValueError("Duplicate category parents")
+        if bool(self.parent_keys) != bool(self.primary_parent_key):
+            raise ValueError("Children need parents and a primary parent; groups have neither")
+        if self.primary_parent_key and self.primary_parent_key not in self.parent_keys:
+            raise ValueError("Primary parent must belong to parent_keys")
+        if self.key in self.parent_keys:
+            raise ValueError("A category cannot be its own parent")
+        return self
+
+
+def validate_definitions(definitions):
+    by_key = {d.key: d for d in definitions}
+    if len(by_key) != len(definitions):
+        raise ValueError("Duplicate category definition keys")
+    for definition in definitions:
+        for key in definition.parent_keys:
+            if key in by_key and by_key[key].parent_keys:
+                raise ValueError("Only first-level groups can be parents; a third level is not allowed")
+
+
+class CategoryImportBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    preview: bool = True
+    definitions: list[CategoryDefinition] = Field(min_length=1, max_length=500)
+    keys: list[str] = Field(min_length=1, max_length=25)
+
+    @field_validator("keys")
+    @classmethod
+    def normalise_keys(cls, value):
+        return [canonical_key(key) for key in value]
+
+    @model_validator(mode="after")
+    def valid_catalogue(self):
+        validate_definitions(self.definitions)
+        if len(set(self.keys)) != len(self.keys):
+            raise ValueError("Duplicate requested category keys")
+        if not set(self.keys).issubset({d.key for d in self.definitions}):
+            raise ValueError("Every requested category needs a definition")
+        return self
 
 
 class ImportAssignment(BaseModel):
@@ -76,14 +150,12 @@ class BusinessImportBatch(BaseModel):
     mode: Literal["add", "update"] = "add"
     preview: bool = True
     status: ServiceStatus = ServiceStatus.published
-    definitions: list[CategoryDefinition] = Field(default_factory=list, max_length=250)
+    definitions: list[CategoryDefinition] = Field(default_factory=list, max_length=500)
     rows: list[BusinessImportRow] = Field(min_length=1, max_length=10)
 
     @model_validator(mode="after")
     def unique_definitions(self):
-        keys = [d.key.lower() for d in self.definitions]
-        if len(keys) != len(set(keys)):
-            raise ValueError("Duplicate category definition keys")
+        validate_definitions(self.definitions)
         identities = [r.service.external_id for r in self.rows]
         if len(identities) != len(set(identities)):
             raise ValueError("Duplicate entries within this batch")

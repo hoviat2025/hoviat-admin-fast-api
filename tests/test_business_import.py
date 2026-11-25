@@ -4,7 +4,9 @@ Integration tests opt in with BUSINESS_IMPORT_TEST_DB_URL pointing at a local
 development/test DB. Every table lives in a disposable, random schema.
 """
 import copy
+import ast
 import os
+from pathlib import Path
 import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -19,8 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.core.exceptions import ServiceError
 from app.models.base import Base
 from app.models.service import Service
-from app.modules.admin.service_management.schemas.import_businesses import BusinessImportBatch, BusinessImportRow
+from app.models.category import Category
+from app.models.service_bookmark import ServiceBookmark  # register reset dependencies
+from app.modules.admin.service_management.schemas.import_businesses import BusinessImportBatch, BusinessImportRow, CategoryImportBatch
 from app.modules.admin.service_management.services.business_import import BusinessImporter
+from app.modules.admin.service_management.services.category_import import CategoryImporter
 from app.modules.services.map_links import clean_google_maps_url
 from app.modules.services.public.serialization import to_public_service
 from app.modules.sns.owned_services.schemas import OwnedServiceResponse
@@ -46,6 +51,30 @@ DEFINITIONS = [
 
 
 class ImportContractTests(unittest.TestCase):
+    def test_category_hierarchy_and_duplicate_definitions(self):
+        cases = [
+            DEFINITIONS + [DEFINITIONS[0]],
+            DEFINITIONS + [{"key": "third-level", "name": "Invalid", "primary_parent_key": "test-child", "parent_keys": ["test-child"]}],
+            [{"key": "blank", "name": "  "}],
+            [{"key": "bad-parent", "name": "Bad", "parent_keys": ["test-root"]}],
+            [{"key": "self", "name": "Self", "parent_keys": ["self"], "primary_parent_key": "self"}],
+        ]
+        for definitions in cases:
+            with self.subTest(definitions=definitions), self.assertRaises(ValidationError):
+                CategoryImportBatch(definitions=definitions, keys=[definitions[0]["key"]])
+        with self.assertRaises(ValidationError):
+            CategoryImportBatch(definitions=DEFINITIONS, keys=["not-defined"])
+
+    def test_category_keys_normalize_before_matching(self):
+        payload = CategoryImportBatch(definitions=[
+            {"key": "TEST_ROOT", "name": "Root"},
+            {"key": "TEST_CHILD", "name": "Child", "parent_keys": ["Test Root"], "primary_parent_key": "test_root"},
+        ], keys=["Test Child"])
+        self.assertEqual(payload.keys, ["test-child"])
+        self.assertEqual(payload.definitions[1].parent_keys, ["test-root"])
+        with self.assertRaises(ValidationError):
+            CategoryImportBatch(definitions=[{"key": "TEST_ROOT", "name": "Root"}, {"key": "test-root", "name": "Root"}], keys=["test-root"])
+
     def test_unresolved_or_mismatched_identity_is_rejected(self):
         for source, external_id in [(None, None), ("telegram", "example:43:1")]:
             row = sample()
@@ -127,6 +156,64 @@ class ImportDatabaseTests(unittest.IsolatedAsyncioTestCase):
     def batch(self, preview=True, mode="add", row=None):
         return BusinessImportBatch.model_validate({"rows": [row or sample()], "definitions": DEFINITIONS,
                                                    "preview": preview, "mode": mode})
+
+    async def test_category_only_preview_retry_unused_suggestions_and_conflict(self):
+        importer = CategoryImporter(self.db, SimpleNamespace(id=1, username="test"))
+        definitions = DEFINITIONS + [{"key": "unused", "name": "Unused category", "primary_parent_key": "test-root", "parent_keys": ["test-root"]}]
+        payload = CategoryImportBatch(definitions=definitions, keys=["test-child", "unused"])
+        result = await importer.run(payload)
+        self.assertEqual({r["key"] for r in result["results"]}, {"test-root", "test-child", "unused"})
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Category)), 0)
+        await self.db.rollback()
+        result = await importer.run(payload.model_copy(update={"preview": False}))
+        self.assertTrue(all(r["action"] == "created" for r in result["results"]))
+        result = await importer.run(payload.model_copy(update={"preview": False}))
+        self.assertTrue(all(r["action"] == "skipped" for r in result["results"]))
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Category)), 3)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Service)), 0)
+        await self.db.rollback()
+
+        # A conflict later in this request must roll back an earlier new category.
+        conflicting = copy.deepcopy(definitions)
+        conflicting[1]["name"] = "Conflicting name"
+        conflicting.append({"key": "must-rollback", "name": "New group"})
+        with self.assertRaises(ServiceError):
+            await importer.run(CategoryImportBatch(definitions=conflicting, keys=["must-rollback", "test-child"], preview=False))
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Category)), 3)
+        await self.db.rollback()
+
+        # Business imports resolve to the same IDs as a categories-only import.
+        result = await self.importer.run(self.batch(preview=False))
+        self.assertEqual(result["results"][0]["action"], "created")
+        self.assertEqual(result["results"][0]["new_categories"], [])
+
+    async def test_category_parent_conflict_and_unknown_parent_do_not_write(self):
+        importer = CategoryImporter(self.db, SimpleNamespace(id=1, username="test"))
+        await importer.run(CategoryImportBatch(definitions=DEFINITIONS, keys=["test-child"], preview=False))
+        changed = copy.deepcopy(DEFINITIONS)
+        changed.append({"key": "other-root", "name": "Other root"})
+        changed[1].update(parent_keys=["other-root"], primary_parent_key="other-root")
+        with self.assertRaises(ServiceError):
+            await importer.run(CategoryImportBatch(definitions=changed, keys=["test-child"], preview=False))
+        missing = [{"key": "missing-child", "name": "Missing", "parent_keys": ["unknown"], "primary_parent_key": "unknown"}]
+        with self.assertRaises(ServiceError):
+            await importer.run(CategoryImportBatch(definitions=missing, keys=["missing-child"], preview=False))
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Category)), 2)
+
+    async def test_reset_sql_only_empties_directory(self):
+        await self.importer.run(self.batch(preview=False))
+        await self.db.execute(text(f'CREATE TABLE "{self.schema}".unrelated_probe (id integer)'))
+        await self.db.execute(text(f'INSERT INTO "{self.schema}".unrelated_probe VALUES (42)'))
+        await self.db.commit()
+        module = ast.parse(Path("scripts/deployment/reset_directory_20261125.py").read_text(encoding="utf-8"))
+        sql = next(ast.literal_eval(node.value) for node in module.body if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "RESET_SQL" for t in node.targets))
+        sql = sql.replace("public.", f'"{self.schema}".')
+        async with self.engine.connect() as conn:
+            raw = await conn.get_raw_connection()
+            await raw.driver_connection.execute(sql)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Service)), 0)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Category)), 0)
+        self.assertEqual(await self.db.scalar(text(f'SELECT id FROM "{self.schema}".unrelated_probe')), 42)
 
     async def test_preview_retry_update_privacy_and_failed_row(self):
         result = await self.importer.run(self.batch())
