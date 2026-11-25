@@ -41,6 +41,7 @@ class PublicServiceResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    google_maps_url: Optional[str] = None
     cover_image_url: Optional[str] = None
     persian_owned: Optional[bool] = None
     persian_provider: Optional[bool] = None

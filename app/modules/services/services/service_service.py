@@ -50,6 +50,7 @@ from app.modules.services.location import (
 )
 from app.shared.repositories.user_base import UserBaseRepository
 from app.modules.services.media_urls import public_cover_image_url
+from app.modules.services.map_links import clean_google_maps_url
 
 # Invoked immediately before the transaction is committed, with the id of the
 # row that was just written. It lets the admin layer write an audit-log row in
@@ -97,7 +98,12 @@ class ServiceService:
         service = await self.services.get_full(service_id)
         if not service:
             raise ServiceError("SERVICE_NOT_FOUND", "Service not found", 404)
-        return self._to_response(service)
+        # Raw extraction text belongs in the individual admin record, never in
+        # every list/search result. Owner projections explicitly omit it.
+        return self._to_response(service).model_copy(update={
+            "description_original": getattr(service, "description_original", None),
+            "import_data": getattr(service, "import_data", None),
+        })
 
     async def list(
         self,
@@ -199,6 +205,8 @@ class ServiceService:
         for field in ("description", "address"):
             if field in data:
                 data[field] = clean_optional_text(data[field])
+        if "google_maps_url" in data:
+            data["google_maps_url"] = clean_google_maps_url(data["google_maps_url"])
 
         # Location is normalised as a SET, because `state` canonicalisation
         # depends on `country_code`. Normalising each field independently would
@@ -511,6 +519,7 @@ class ServiceService:
         data = {
             "name": require_non_empty(payload.name, "name"),
             "description": clean_optional_text(payload.description),
+            "google_maps_url": clean_google_maps_url(payload.google_maps_url),
             "owner_user_id": payload.owner_user_id,
             "show_owner": payload.show_owner,
             # Tri-state: None means "not assessed" and is stored as null rather
@@ -604,6 +613,7 @@ class ServiceService:
             owner_show_profile=service.owner_show_profile,
             name=service.name,
             description=service.description,
+            google_maps_url=getattr(service, "google_maps_url", None),
             cover_image_url=public_cover_image_url(getattr(service, "cover_image_path", None)),
             # Tri-state Iranian/Persian relevance. None means "not assessed"
             # and must survive to the response instead of collapsing to False.

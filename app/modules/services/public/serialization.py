@@ -17,6 +17,7 @@ def to_public_service(service: Service) -> PublicServiceResponse:
         id=service.id,
         name=service.name,
         description=service.description,
+        google_maps_url=getattr(service, "google_maps_url", None),
         cover_image_url=public_cover_image_url(getattr(service, "cover_image_path", None)),
         persian_owned=service.persian_owned,
         persian_provider=service.persian_provider,

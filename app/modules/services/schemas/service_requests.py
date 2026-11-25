@@ -59,6 +59,7 @@ class ServiceCreateRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=300)
     description: Optional[str] = None
+    google_maps_url: Optional[str] = Field(default=None, max_length=4096)
 
     owner_user_id: Optional[int] = None
     # Private by default: adding an owner must not publish that relationship.
@@ -107,6 +108,7 @@ class ServiceUpdateRequest(BaseModel):
 
     name: Optional[str] = Field(default=None, min_length=1, max_length=300)
     description: Optional[str] = None
+    google_maps_url: Optional[str] = Field(default=None, max_length=4096)
 
     owner_user_id: Optional[int] = None
     show_owner: Optional[bool] = None

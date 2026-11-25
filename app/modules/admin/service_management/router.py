@@ -42,6 +42,21 @@ from app.modules.services.schemas.location_requests import CityCreateRequest
 router = APIRouter()
 
 
+from app.modules.admin.service_management.schemas.import_businesses import BusinessImportBatch
+from app.modules.admin.service_management.services.business_import import BusinessImporter
+from app.core.database import get_db
+
+
+@router.post("/imports/businesses", dependencies=[Depends(require_write_users_permission)])
+async def import_businesses(
+    payload: BusinessImportBatch, request: Request,
+    admin: Admin = Depends(require_write_users_permission), db=Depends(get_db),
+):
+    ip, ua = _client(request)
+    result = await BusinessImporter(db, admin, ip, ua).run(payload)
+    return StandardResponse.success(data=result)
+
+
 @router.post("/locations/cities", dependencies=[Depends(require_write_users_permission)])
 async def create_location_city(
     payload: CityCreateRequest,

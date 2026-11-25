@@ -9,9 +9,11 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     TIMESTAMP,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models.base import Base
 
@@ -71,6 +73,10 @@ class Service(Base):
 
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
+    google_maps_url = Column(Text, nullable=True)
+    # Private extraction material; excluded from public/owner projections.
+    description_original = Column(Text, nullable=True)
+    import_data = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     # Managed storage key only. JSON clients cannot supply or change this path.
     cover_image_path = Column(Text, nullable=True)
 

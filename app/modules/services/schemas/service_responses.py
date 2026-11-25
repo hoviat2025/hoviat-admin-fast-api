@@ -38,6 +38,9 @@ class ServiceResponse(BaseModel):
 
     name: str
     description: Optional[str] = None
+    google_maps_url: Optional[str] = None
+    description_original: Optional[str] = None
+    import_data: Optional[dict] = None
     cover_image_url: Optional[str] = None
 
     # Tri-state Iranian/Persian relevance: true = explicitly yes,
