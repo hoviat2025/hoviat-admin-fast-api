@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.exceptions import ServiceError
 from app.models.service import Service
+from app.models.service_duplicate_archive import ServiceDuplicateArchive
 from app.modules.admin.service_management.services.admin_service_service import AdminServiceManagementService
 from app.modules.services.schemas.service_requests import ServiceAggregateSaveRequest, ServiceCategoryInput
 from app.modules.services.services.service_service import ServiceService
@@ -49,6 +50,16 @@ class BusinessImporter:
         # Serialise import writers, including the absent-row case. The existing
         # unique(source, external_id) index remains the final database guard.
         await self.db.execute(text("SELECT pg_advisory_xact_lock(606125199)"))
+        archived = await self.db.scalar(select(ServiceDuplicateArchive).where(
+            ServiceDuplicateArchive.source == row.service.source,
+            ServiceDuplicateArchive.external_id == row.service.external_id,
+        ))
+        if archived is not None:
+            # Never recreate a merged listing, including explicit update imports.
+            # Its survivor can be edited normally after reviewing the archive.
+            return {"external_id": row.service.external_id, "name": row.service.name,
+                    "service_id": archived.survivor_id, "action": "skipped",
+                    "message": "Previously merged; original preserved in duplicate archive"}
         existing = await self.db.scalar(select(Service).where(
             Service.source == row.service.source,
             Service.external_id == row.service.external_id,

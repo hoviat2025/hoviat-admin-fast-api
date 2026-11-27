@@ -46,6 +46,44 @@ from app.modules.admin.service_management.schemas.import_businesses import Busin
 from app.modules.admin.service_management.services.business_import import BusinessImporter
 from app.modules.admin.service_management.services.category_import import CategoryImporter
 from app.core.database import get_db
+from app.models.service_duplicate_archive import ServiceDuplicateArchive
+from app.modules.admin.service_management.schemas.duplicates import DuplicateBatch
+from app.modules.admin.service_management.services.duplicates import DuplicateHandler, record_dict
+from sqlalchemy import select
+
+
+@router.get("/duplicates/export", dependencies=[Depends(require_write_users_permission)])
+async def export_duplicate_candidates(
+    after: int = Query(0, ge=0), size: int = Query(200, ge=1, le=500),
+    city: str | None = Query(None, max_length=200), parent_id: int | None = Query(None, gt=0),
+    ceiling: int | None = Query(None, ge=0), db=Depends(get_db),
+):
+    return StandardResponse.success(data=await DuplicateHandler(db).export(after, size, city, parent_id, ceiling))
+
+
+@router.post("/duplicates/merge", dependencies=[Depends(require_write_users_permission)])
+async def handle_duplicates(payload: DuplicateBatch, request: Request,
+                            admin: Admin = Depends(require_write_users_permission), db=Depends(get_db)):
+    ip, ua = _client(request)
+    return StandardResponse.success(data=await DuplicateHandler(db, admin, ip, ua).run(payload))
+
+
+@router.get("/duplicates/archive", dependencies=[Depends(require_write_users_permission)])
+async def list_duplicate_archive(after: int = Query(0, ge=0), db=Depends(get_db)):
+    rows = (await db.execute(select(ServiceDuplicateArchive.original_id, ServiceDuplicateArchive.survivor_id,
+        ServiceDuplicateArchive.merged_by, ServiceDuplicateArchive.reason, ServiceDuplicateArchive.archived_at)
+        .where(ServiceDuplicateArchive.original_id > after).order_by(ServiceDuplicateArchive.original_id).limit(51))).mappings().all()
+    return StandardResponse.success(data={"records": [dict(r) for r in rows[:50]],
+                                           "next_after": rows[49]["original_id"] if len(rows) > 50 else None})
+
+
+@router.get("/duplicates/archive/{original_id}", dependencies=[Depends(require_write_users_permission)])
+async def get_duplicate_archive(original_id: int, db=Depends(get_db)):
+    from app.core.exceptions import ServiceError
+    row = await db.get(ServiceDuplicateArchive, original_id)
+    if row is None:
+        raise ServiceError("NOT_FOUND", "Archived business not found", 404)
+    return StandardResponse.success(data=record_dict(row))
 
 
 @router.post("/imports/businesses", dependencies=[Depends(require_write_users_permission)])
