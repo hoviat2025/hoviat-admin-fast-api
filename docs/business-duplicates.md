@@ -10,12 +10,15 @@ Open **Businesses → Duplicate management** (`/services/duplicates`).
 1. Download the compact JSON and matching prompt. Optional city and first-level
    category filters can be combined; leave both empty to export everything.
 2. Give both files to one AI. Import its JSON result into the same admin screen.
-3. Preview, compare the complete records and proposed changes, and optionally
-   download the JSON/text report. This step never writes business data.
-4. Select reviewed likely groups and confirm keeping the chosen record and
-   archiving/removing the others. There is no field-combining step. Possible groups cannot
-   be applied; if staff confirm one, change its confidence in the proposal file
-   to `likely` and preview the file again.
+3. Uploading automatically loads a read-only comparison of the complete records.
+   File management, refresh and JSON/text reports are under optional tools.
+4. For a clear duplicate, click the single **remove duplicate** button next to
+   its comparison. No checkbox or separate approval step is needed. For several
+   businesses, optional selection checkboxes plus one bulk-removal button are
+   available; no additional confirmation checkbox. Uncertain matches show a
+   keeper choice and an explicit **keep this version and remove the others**
+   button. That action fetches a fresh preview internally, respects blocks/stale
+   checks, then applies the chosen whole-record retention without extra UI ticks.
 5. Retrieve removed records from the private archive section at any time.
 
 The downloadable prompt lives at
@@ -138,10 +141,9 @@ IDs/part totals remain rejected. Existing non-partitioned proposals work too.
 Identical repeated suggestions are deduplicated. Other overlaps are grouped
 for **review only**, with their original proposals retained in the report.
 There is no automatic transitive merge or automatic keeper selection across
-sessions. Staff see full records, explicitly confirm that all represent one
-entity, choose the keeper and receive a new preview. They then use the existing
-selection/approval action. Possible matches can be confirmed in the same UI
-without editing JSON or requiring another AI. Overlap components above 20 members
+sessions. Staff see full records and choose the keeper. The explicit keeper/removal
+button performs the required fresh preview and removal in one UI action. Possible
+matches can be handled without editing JSON or requiring another AI. Overlap components above 20 members
 are rejected for separate handling rather than generating overlapping deletions.
 
 After ALL parts and findings are handled, staff can use the manifest's export
