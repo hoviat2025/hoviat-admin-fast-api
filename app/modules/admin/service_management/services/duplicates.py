@@ -5,7 +5,7 @@ groups. Removed rows are snapshotted before deletion, including private fields.
 """
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import delete, exists, func, or_, select, text, update
@@ -57,7 +57,14 @@ class DuplicateHandler:
         self.admin = ImportActor.capture(admin) if admin else None
         self.ip, self.ua = ip, ua
 
-    async def export(self, after=0, size=200, city=None, parent_id=None, ceiling=None):
+    async def export(self, after=0, size=200, city=None, parent_id=None, ceiling=None,
+                     checked_through=None, segment="all"):
+        if segment not in ("all", "new", "old") or (segment != "all" and checked_through is None):
+            raise ServiceError("INVALID_INPUT", "Old/new export segments require a review cutoff", 422)
+        if checked_through is not None and (checked_through.tzinfo is None or checked_through.utcoffset() is None):
+            raise ServiceError("INVALID_INPUT", "The review cutoff must include a timezone", 422)
+        if checked_through is not None:
+            checked_through = checked_through.astimezone(timezone.utc)
         if parent_id is not None:
             parent = await self.db.get(Category, parent_id)
             if parent is None or parent.parent_id is not None:
@@ -66,8 +73,15 @@ class DuplicateHandler:
             ceiling = await self.db.scalar(select(func.max(Service.id))) or 0
         # Slice long descriptions in SQL; don't load import_data or ORM relations.
         stmt = select(Service.id, Service.name, Service.city, Service.address,
-                      Service.created_at, func.substr(Service.description, 1, 120).label("description"))
+                      Service.created_at, Service.updated_at,
+                      func.substr(Service.description, 1, 120).label("description"))
         stmt = stmt.where(Service.id > after, Service.id <= ceiling)
+        if checked_through is not None:
+            changed_at = func.greatest(Service.created_at, Service.updated_at)
+            if segment == "new":
+                stmt = stmt.where(changed_at > checked_through)
+            elif segment == "old":
+                stmt = stmt.where(changed_at <= checked_through)
         if city:
             stmt = stmt.where(func.lower(Service.city) == city.strip().lower())
         if parent_id is not None:
@@ -86,6 +100,9 @@ class DuplicateHandler:
                 phones[sid].append(value)
         records = [{"id": r["id"], "title": r["name"], "city": r["city"], "address": r["address"],
                     "description_excerpt": r["description"], "created_at": jsonable_encoder(r["created_at"]),
+                    "updated_at": jsonable_encoder(r["updated_at"]),
+                    "review_status": ("previously_checked" if checked_through is not None and
+                        max(r["created_at"], r["updated_at"]) <= checked_through else "new"),
                     "phones": phones[r["id"]]} for r in page]
         return {"schema_version": "1.0", "records": records, "ceiling": ceiling,
                 "next_after": ids[-1] if len(rows) > size else None}

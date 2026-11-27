@@ -180,7 +180,7 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["next_after"], 1)
         self.assertEqual(len(first["records"][0]["description_excerpt"]), 120)
         self.assertEqual(first["records"][0]["phones"], ["+4912345"])
-        self.assertEqual(set(first["records"][0]), {"id", "title", "city", "address", "phones", "description_excerpt", "created_at"})
+        self.assertEqual(set(first["records"][0]), {"id", "title", "city", "address", "phones", "description_excerpt", "created_at", "updated_at", "review_status"})
         second = await self.handler.export(after=first["next_after"], ceiling=first["ceiling"])
         self.assertEqual([r["id"] for r in second["records"]], [2, 3])
         filtered = await self.handler.export(parent_id=200)
@@ -188,6 +188,32 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.handler.export(city="Paris"))["records"], [])
         await self.run_group(False, await self.previewed())
         self.assertEqual([r["id"] for r in (await self.handler.export())["records"]], [1, 3])
+
+    async def test_incremental_cutoff_includes_edits_and_exact_boundary_is_old(self):
+        cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        for sid, created, updated_at in ((1, cutoff - timedelta(days=1), cutoff),
+                                         (2, cutoff - timedelta(days=1), cutoff + timedelta(seconds=1)),
+                                         (3, cutoff + timedelta(seconds=1), cutoff + timedelta(seconds=1))):
+            await self.db.execute(update(Service).where(Service.id == sid).values(created_at=created, updated_at=updated_at))
+        await self.db.commit()
+        page = await self.handler.export(checked_through=cutoff)
+        self.assertEqual([(r["id"], r["review_status"]) for r in page["records"]],
+                         [(1, "previously_checked"), (2, "new"), (3, "new")])
+        fresh = await self.handler.export(checked_through=cutoff, segment="new", size=1)
+        self.assertEqual([r["id"] for r in fresh["records"]], [2])
+        next_page = await self.handler.export(after=fresh["next_after"], checked_through=cutoff,
+                                              segment="new", ceiling=fresh["ceiling"])
+        self.assertEqual([r["id"] for r in next_page["records"]], [3])
+        old = await self.handler.export(checked_through=cutoff, segment="old", parent_id=200, city="Berlin")
+        self.assertEqual([r["id"] for r in old["records"]], [1])
+        self.assertTrue(all(r["review_status"] == "new" for r in (await self.handler.export())["records"]))
+
+    async def test_incremental_parameters_are_validated_without_writes(self):
+        from app.core.exceptions import ServiceError
+        for arguments in ({"segment": "old"}, {"segment": "invalid"}, {"checked_through": datetime(2026, 1, 1)}):
+            with self.subTest(arguments=arguments), self.assertRaises(ServiceError):
+                await self.handler.export(**arguments)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Archive)), 0)
 
     async def test_audit_failure_rolls_back_archive_and_deletions(self):
         payload = await self.previewed()

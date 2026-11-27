@@ -57,8 +57,11 @@ async def export_duplicate_candidates(
     after: int = Query(0, ge=0), size: int = Query(200, ge=1, le=500),
     city: str | None = Query(None, max_length=200), parent_id: int | None = Query(None, gt=0),
     ceiling: int | None = Query(None, ge=0), db=Depends(get_db),
+    checked_through: datetime | None = Query(None),
+    segment: str = Query("all", pattern="^(all|new|old)$"),
 ):
-    return StandardResponse.success(data=await DuplicateHandler(db).export(after, size, city, parent_id, ceiling))
+    return StandardResponse.success(data=await DuplicateHandler(db).export(
+        after, size, city, parent_id, ceiling, checked_through, segment))
 
 
 @router.post("/duplicates/merge", dependencies=[Depends(require_write_users_permission)])

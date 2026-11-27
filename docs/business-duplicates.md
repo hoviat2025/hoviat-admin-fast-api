@@ -56,7 +56,8 @@ an optional way to divide work, not a guarantee of global duplicate detection.
   advisory lock serializes import and merge operations.
 - The chosen keeper stays entirely unchanged: no descriptions, contacts,
   categories, media paths, location fields or timestamps are copied or modified.
-  Choose the more complete record first, then the more recently created record.
+  Choose the more complete record first, then the most recently updated record
+  (creation time if update time is unavailable).
   That choice is made by the AI and reviewed by staff, not silently overridden
   by a second ranking algorithm on the server.
 - Different owners or owner visibility preferences still block that group.
@@ -96,3 +97,51 @@ All use the existing administrator write permission. No public archive endpoint.
 Tests in `tests/test_business_duplicates.py` opt into a **local development/test
 database** with `BUSINESS_IMPORT_TEST_DB_URL` and create/drop isolated schemas.
 Never point these tests at a production database.
+
+## Optional incremental, multi-session review
+
+The export UI can accept **previously checked through** (device-local time,
+converted to UTC) and a maximum number of records per AI file (default 300).
+Leaving the option off preserves the ordinary single-file full review.
+
+`max(created_at, updated_at) > cutoff` identifies new/edited records; the exact
+cutoff belongs to the old baseline. The cutoff is an administrator's statement
+about previous checking, not a stored/computed certification. No export, import
+or preview advances it automatically. A city/category review applies only to
+that scope, so its cutoff must not later be treated as a global checkpoint.
+
+An incremental export downloads ONE ZIP containing a manifest, the prompt and
+numbered JSON parts. All new records appear in every part. Old baseline records
+are divided between the remaining spaces, so every new-old comparison is
+represented once. Only part 1 asks for new-new comparisons. Old-old comparisons
+are deliberately skipped; this mode assumes that baseline was checked already.
+This arrangement partitions the requested comparison work, not the guarantee
+that a probabilistic AI will detect every match.
+
+The entire new set must fit in one part, with at least one additional place when
+old records exist. Otherwise the UI asks for a larger per-file limit or narrower
+filters; it never silently splits new records and loses cross-new comparisons.
+The original 25 MiB browser/export safeguard remains, including repeated copies
+of new records in the ZIP. No new package dependency or migration is introduced.
+Reading remains paginated, and export labels do not write to the database.
+
+Use a separate AI session for each part plus the prompt. Each result copies
+`export_id`, `part_number`, `total_parts` alongside `schema_version` and `groups`.
+Collect all results (including empty groups) and select them together in the
+multi-file result input. Incomplete numbered sets can be previewed but not
+applied. Mixed export IDs/part totals and duplicate part numbers are rejected.
+Existing single-file, non-partitioned proposals remain supported.
+
+Identical repeated suggestions are deduplicated. Other overlaps are grouped
+for **review only**, with their original proposals retained in the report.
+There is no automatic transitive merge or automatic keeper selection across
+sessions. Staff see full records, explicitly confirm that all represent one
+entity, choose the keeper and receive a new preview. They then use the existing
+selection/approval action. Possible matches can be confirmed in the same UI
+without editing JSON or requiring another AI. Overlap components above 20 members
+are rejected for separate handling rather than generating overlapping deletions.
+
+After ALL parts and findings are handled, staff can use the manifest's export
+start time as the next checkpoint for that same scope. Pages are not a frozen
+database snapshot: records created or edited during/after the export remain new
+at that checkpoint and must be checked on the next run.
