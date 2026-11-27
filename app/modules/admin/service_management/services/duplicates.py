@@ -143,12 +143,27 @@ class DuplicateHandler:
         # between archiving its identity and deleting it.
         await self.db.execute(text("SELECT pg_advisory_xact_lock(606125199)"))
         ids = sorted([group.keep_id, *group.remove_ids])
-        archived = (await self.db.scalars(select(Archive).where(Archive.original_id.in_(group.remove_ids)))).all()
+        requested_group = group.model_dump(exclude={"preview_token"})
+        archived = (await self.db.scalars(select(Archive).where(Archive.original_id.in_(ids)))).all()
+        resolved_ids = {}
         if archived:
-            if (len(archived) == len(group.remove_ids) and all(a.survivor_id == group.keep_id for a in archived)
-                    and await self.db.get(Service, group.keep_id) is not None):
-                return {"keep_id": group.keep_id, "remove_ids": group.remove_ids, "action": "already_applied"}
-            raise ServiceError("CONFLICT_OCCURRED", "Group overlaps an earlier merge; preview a fresh export", 409)
+            if any(a.survivor_id is None for a in archived):
+                raise ServiceError("CONFLICT_OCCURRED", "A previously kept record was deleted; export current records again", 409)
+            resolved_ids = {a.original_id: a.survivor_id for a in archived}
+            live_ids = sorted({resolved_ids.get(i, i) for i in ids})
+            if len(live_ids) == 1 and await self.db.get(Service, live_ids[0]) is not None:
+                return {"keep_id": live_ids[0], "remove_ids": [i for i in ids if i != live_ids[0]],
+                        "action": "already_applied", "requested_group": requested_group,
+                        "message": "These records already point to the same surviving business"}
+            if not preview:
+                raise ServiceError("CONFLICT_OCCURRED", "An earlier part changed these records; preview again and confirm the current keeper", 409)
+            # Preview the CURRENT records, but never automatically authorize a
+            # transitive deletion based on an earlier part's different keeper.
+            keeper_id = resolved_ids.get(group.keep_id, group.keep_id)
+            group = group.model_copy(update={"keep_id": keeper_id,
+                "remove_ids": [i for i in live_ids if i != keeper_id], "confidence": "possible",
+                "preview_token": None, "reason": ("بخشی از این موارد قبلاً بایگانی شده‌اند. نسخه‌های فعلی و انتخاب رکورد باقی‌مانده را بررسی کنید. " + group.reason)[:2000]})
+            ids = live_ids
         records = await self.snapshots(ids, lock=True)
         # A preview of the earlier field-combining behavior must not authorize
         # this operation: staff need to see the new keep-one/discard-other plan.
@@ -156,6 +171,8 @@ class DuplicateHandler:
         plan = merge_plan(records, group.keep_id)
         result = {"keep_id": group.keep_id, "remove_ids": group.remove_ids, "reason": group.reason,
                   "confidence": group.confidence, "preview_token": token, "records": records, "plan": plan}
+        if resolved_ids:
+            result.update(requested_group=requested_group, resolved_ids=resolved_ids)
         if preview:
             return {**result, "action": "blocked" if plan["blocked"] else "preview"}
         if group.confidence != "likely":

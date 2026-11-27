@@ -173,6 +173,38 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["results"][0]["action"], "skipped", result)
             self.assertEqual(result["results"][0]["service_id"], 3)
 
+    async def test_later_part_with_archived_keeper_gets_current_preview_and_explicit_confirmation(self):
+        preview = await self.run_group(payload=group(keep=2, remove=[1]))
+        result = await self.run_group(False, group(keep=2, remove=[1], preview_token=preview["preview_token"]))
+        self.assertEqual(result["action"], "merged", result)
+        # Another AI session used the original export and chose the now-archived #1.
+        later = group(keep=1, remove=[3])
+        result = await self.run_group(payload=later)
+        self.assertEqual(result["action"], "preview", result)
+        self.assertEqual(result["keep_id"], 2)
+        self.assertEqual(result["remove_ids"], [3])
+        self.assertEqual(result["confidence"], "possible")
+        self.assertEqual(result["resolved_ids"], {1: 2})
+        self.assertEqual({r["service"]["id"] for r in result["records"]}, {2, 3})
+        # An old source-ID request must never authorize deletion after remapping.
+        rejected = await self.run_group(False, {**later, "preview_token": result["preview_token"]})
+        self.assertEqual(rejected["action"], "error")
+        self.assertIsNotNone(await self.db.get(Service, 3))
+        # Staff deliberately choose the current, complete #3 and preview it.
+        confirmed = group(keep=3, remove=[2])
+        fresh = await self.run_group(payload=confirmed)
+        applied = await self.run_group(False, {**confirmed, "preview_token": fresh["preview_token"]})
+        self.assertEqual(applied["action"], "merged", applied)
+        self.assertEqual((await self.db.get(Archive, 1)).survivor_id, 3)
+        self.assertEqual((await self.run_group(payload=later))["action"], "already_applied")
+
+    async def test_later_part_skips_completed_removal_but_does_not_silently_delete_other_records(self):
+        await self.run_group(False, await self.previewed())
+        later = await self.run_group(payload=group(remove=[2, 3]))
+        self.assertEqual(later["confidence"], "possible")
+        self.assertEqual(later["remove_ids"], [3])
+        self.assertIsNotNone(await self.db.get(Service, 3))
+
     async def test_export_pages_filters_secondary_parent_and_excludes_archives(self):
         await self.db.execute(update(Service).where(Service.id == 1).values(description="x" * 1000))
         await self.db.commit()

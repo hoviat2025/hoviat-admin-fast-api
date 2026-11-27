@@ -127,10 +127,13 @@ Reading remains paginated, and export labels do not write to the database.
 
 Use a separate AI session for each part plus the prompt. Each result copies
 `export_id`, `part_number`, `total_parts` alongside `schema_version` and `groups`.
-Collect all results (including empty groups) and select them together in the
-multi-file result input. Incomplete numbered sets can be previewed but not
-applied. Mixed export IDs/part totals and duplicate part numbers are rejected.
-Existing single-file, non-partitioned proposals remain supported.
+Upload results (including empty groups) one at a time or together. A part's
+reviewed groups can be applied immediately; the received/total count is progress
+information, not an apply gate. Newly selected files accumulate on the page.
+Selecting a revised result for the same export/part replaces that part. Invalid
+additions leave the existing selection intact. Staff can remove individual files
+or start a new local review without changing database records. Mixed export
+IDs/part totals remain rejected. Existing non-partitioned proposals work too.
 
 Identical repeated suggestions are deduplicated. Other overlaps are grouped
 for **review only**, with their original proposals retained in the report.
@@ -145,3 +148,13 @@ After ALL parts and findings are handled, staff can use the manifest's export
 start time as the next checkpoint for that same scope. Pages are not a frozen
 database snapshot: records created or edited during/after the export remain new
 at that checkpoint and must be checked on the next run.
+
+When a later part refers to a record already archived by an earlier part,
+preview resolves its current survivor. If every referenced record already points
+to one active survivor, the group is reported as already applied. Otherwise the
+current active records are shown as a possible match, with old-to-current IDs
+included in the report. Staff must explicitly confirm the keeper and get a fresh
+preview before applying. Apply never silently redirects a deletion to a new
+survivor, and a deleted/missing survivor requires a new export. This permits
+part-by-part work without either a forced all-files upload or an automatic
+transitive deletion.
