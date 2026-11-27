@@ -32,20 +32,11 @@ def fingerprint(records):
                                      separators=(",", ":")).encode()).hexdigest()
 
 
-def contact_key(contact):
-    return (contact["type"], contact["value"].strip(), contact.get("platform") or "")
-
-
 def merge_plan(records, keep_id):
-    """Deterministic plan; never resolve ownership/privacy conflicts by guessing."""
+    """Keep one whole record unchanged; archive the others without blending data."""
     keeper = next(r for r in records if r["service"]["id"] == keep_id)
-    blocked, conflicts, fills, contacts, categories = [], [], {}, [], []
+    blocked = []
     base = keeper["service"]
-    seen_contacts = {contact_key(c): c for c in keeper["contacts"]}
-    seen_categories = {c["category_id"] for c in keeper["categories"]}
-    # Location components are never mixed across records. Staff can reconcile
-    # conflicting descriptions/locations after reviewing the retained snapshots.
-    fillable = ("description", "description_original", "cover_image_path")
     for record in records:
         other = record["service"]
         if other["id"] == keep_id:
@@ -53,28 +44,9 @@ def merge_plan(records, keep_id):
         for field in ("owner_user_id", "show_owner", "owner_show_profile"):
             if base[field] != other[field]:
                 blocked.append(f"{field} differs for record {other['id']}; reconcile before merging")
-        for field in fillable:
-            if not base.get(field) and other.get(field) and field not in fills:
-                fills[field] = other[field]
-        for field in ("description", "address", "postal_code", "city", "country_code", "google_maps_url", "status", "cover_image_path"):
-            if base.get(field) and other.get(field) and base[field] != other[field]:
-                conflicts.append({"field": field, "record_id": other["id"],
-                                  "kept": base[field], "archived": other[field]})
-        for contact in record["contacts"]:
-            key = contact_key(contact)
-            if key in seen_contacts:
-                if contact["is_visible"] != seen_contacts[key]["is_visible"]:
-                    blocked.append(f"Contact visibility differs for record {other['id']}")
-            else:
-                seen_contacts[key] = contact
-                contacts.append(contact)
-        for category in record["categories"]:
-            if category["category_id"] not in seen_categories:
-                seen_categories.add(category["category_id"])
-                categories.append(category["category_id"])
-    return {"blocked": sorted(set(blocked)), "conflicts": conflicts,
-            "fill_empty_fields": fills, "add_contacts": contacts,
-            "add_category_ids": categories,
+    return {"blocked": sorted(set(blocked)), "operation": "keep_unchanged_archive_others",
+            "keep_id": keep_id,
+            "archive_ids": [r["service"]["id"] for r in records if r["service"]["id"] != keep_id],
             "bookmarks": "Move to keeper; retain the earlier date for existing bookmarks",
             "sources": "All original source identities and full records remain in the private archive"}
 
@@ -161,7 +133,9 @@ class DuplicateHandler:
                 return {"keep_id": group.keep_id, "remove_ids": group.remove_ids, "action": "already_applied"}
             raise ServiceError("CONFLICT_OCCURRED", "Group overlaps an earlier merge; preview a fresh export", 409)
         records = await self.snapshots(ids, lock=True)
-        token = fingerprint({"keep_id": group.keep_id, "records": records})
+        # A preview of the earlier field-combining behavior must not authorize
+        # this operation: staff need to see the new keep-one/discard-other plan.
+        token = fingerprint({"policy": "keep-whole-record-v1", "keep_id": group.keep_id, "records": records})
         plan = merge_plan(records, group.keep_id)
         result = {"keep_id": group.keep_id, "remove_ids": group.remove_ids, "reason": group.reason,
                   "confidence": group.confidence, "preview_token": token, "records": records, "plan": plan}
@@ -187,11 +161,6 @@ class DuplicateHandler:
         await self.db.flush()
         # Repoint older archives if today's keeper was itself a previous survivor.
         await self.db.execute(update(Archive).where(Archive.survivor_id.in_(group.remove_ids)).values(survivor_id=group.keep_id))
-        for c in plan["add_contacts"]:
-            self.db.add(ServiceContact(service_id=group.keep_id, **{k: c[k] for k in (
-                "title", "type", "value", "platform", "display_order", "is_visible")}))
-        for category_id in plan["add_category_ids"]:
-            self.db.add(ServiceCategory(service_id=group.keep_id, category_id=category_id, is_primary=False))
         for record in records:
             if record["service"]["id"] == group.keep_id:
                 continue
@@ -201,8 +170,6 @@ class DuplicateHandler:
                 await self.db.execute(statement.on_conflict_do_update(
                     index_elements=[ServiceBookmark.bookmarker_id, ServiceBookmark.service_id],
                     set_={"created_at": func.least(ServiceBookmark.created_at, statement.excluded.created_at)}))
-        await self.db.execute(update(Service).where(Service.id == group.keep_id).values(
-            **plan["fill_empty_fields"], updated_at=func.now()))
         await self.db.flush()
         for model in (ServiceBookmark, ServiceContact, ServiceCategory):
             await self.db.execute(delete(model).where(model.service_id.in_(group.remove_ids)))

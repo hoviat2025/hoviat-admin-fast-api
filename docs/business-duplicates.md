@@ -12,7 +12,8 @@ Open **Businesses → Duplicate management** (`/services/duplicates`).
 2. Give both files to one AI. Import its JSON result into the same admin screen.
 3. Preview, compare the complete records and proposed changes, and optionally
    download the JSON/text report. This step never writes business data.
-4. Select reviewed likely groups and confirm the merge. Possible groups cannot
+4. Select reviewed likely groups and confirm keeping the chosen record and
+   archiving/removing the others. There is no field-combining step. Possible groups cannot
    be applied; if staff confirm one, change its confidence in the proposal file
    to `likely` and preview the file again.
 5. Retrieve removed records from the private archive section at any time.
@@ -46,20 +47,21 @@ preview requests contain at most 20 groups and apply requests one group each.
 Filters can miss duplicates with different city/category assignments. They are
 an optional way to divide work, not a guarantee of global duplicate detection.
 
-## Merge and archive rules
+## Keep-one and archive rules
 
 - Transactions are per group. Failure rolls back that entire group, including
   its archive and audit entries. Earlier completed groups remain completed.
 - Service rows are locked; preview hashes cover full records, categories,
   contacts and bookmarks. Apply rejects a stale/missing preview. The same import
   advisory lock serializes import and merge operations.
-- The keeper's nonempty fields, publishing state, ownership/privacy and primary
-  category remain unchanged. Only missing descriptions/original description/
-  cover image are filled, plus contacts and secondary category memberships.
-  Location components are not mixed from potentially conflicting addresses.
-- Different owners or visibility preferences block that group. Conflicting
-  nonempty content is shown in preview; the keeper wins, and the other values
-  remain in the archived snapshot. The AI's reason is never used as executable
+- The chosen keeper stays entirely unchanged: no descriptions, contacts,
+  categories, media paths, location fields or timestamps are copied or modified.
+  Choose the more complete record first, then the more recently created record.
+  That choice is made by the AI and reviewed by staff, not silently overridden
+  by a second ranking algorithm on the server.
+- Different owners or owner visibility preferences still block that group.
+  Removed records' differing values remain only in their archived snapshots.
+  The AI's reason is never used as executable
   instructions or database field assignments.
 - Bookmarks move to the keeper without duplication, retaining the earliest
   existing bookmark time. No media files are deleted or copied.
@@ -75,6 +77,8 @@ an optional way to divide work, not a guarantee of global duplicate detection.
   deleted separately, the archive and source identity remain preserved.
 - A repeated successful group is reported as already applied. Groups overlapping
   a different earlier merge are rejected for fresh review.
+- Preview tokens include the keep-only policy version, so an old preview showing
+  field combination cannot accidentally authorize this changed behavior.
 
 ## Deployment
 

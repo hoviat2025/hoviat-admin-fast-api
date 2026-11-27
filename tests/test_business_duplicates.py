@@ -42,8 +42,11 @@ class ContractTests(unittest.TestCase):
                 "contacts": [], "categories": [], "bookmarks": []}
         plan = merge_plan([record(1), record(2, show_owner=False)], 1)
         self.assertTrue(plan["blocked"])
-        self.assertNotIn("description", plan["fill_empty_fields"])
-        self.assertEqual(plan["conflicts"][0]["field"], "description")
+        self.assertEqual(plan["operation"], "keep_unchanged_archive_others")
+        self.assertEqual(plan["archive_ids"], [2])
+        self.assertNotIn("fill_empty_fields", plan)
+        self.assertNotIn("add_contacts", plan)
+        self.assertNotIn("add_category_ids", plan)
 
 
 @unittest.skipUnless(os.environ.get("BUSINESS_IMPORT_TEST_DB_URL"), "Local integration DB not selected")
@@ -94,6 +97,7 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         return group(preview_token=preview["preview_token"])
 
     async def test_preview_is_read_only_then_merge_archives_and_retry_is_safe(self):
+        keeper_before = (await self.handler.snapshots([1]))[0]
         payload = await self.previewed()
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(Service)), 3)
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(Archive)), 0)
@@ -103,10 +107,36 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         archive = await self.db.get(Archive, 2)
         self.assertEqual(archive.snapshot["removed"]["service"]["description"], "original " * 2)
         self.assertEqual(archive.snapshot["keeper_before"]["service"]["id"], 1)
-        self.assertEqual(await self.db.scalar(select(func.count()).select_from(ServiceContact).where(ServiceContact.service_id == 1)), 2)
-        self.assertEqual(await self.db.scalar(select(func.count()).select_from(ServiceCategory).where(ServiceCategory.service_id == 1)), 2)
+        keeper_after = (await self.handler.snapshots([1]))[0]
+        self.assertEqual(keeper_before, keeper_after)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(ServiceContact).where(ServiceContact.service_id == 1)), 1)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(ServiceCategory).where(ServiceCategory.service_id == 1)), 1)
         self.assertEqual((await self.run_group(False, payload))["action"], "already_applied")
         self.assertEqual(self.audit_mock.await_count, 1)
+
+    async def test_missing_keeper_fields_stay_empty_and_other_values_are_archived(self):
+        await self.db.execute(update(Service).where(Service.id == 1).values(description=None, cover_image_path=None))
+        await self.db.execute(update(Service).where(Service.id == 2).values(cover_image_path="business-covers/2/example.jpg"))
+        # Equivalent Instagram URLs must not produce a second contact on the keeper.
+        self.db.add_all([
+            ServiceContact(service_id=1, title="Instagram", type="url", value="https://www.instagram.com/example", platform="instagram", is_visible=True),
+            ServiceContact(service_id=2, title="Instagram", type="url", value="https://instagram.com/example", platform="instagram", is_visible=True),
+        ])
+        await self.db.commit()
+        before = (await self.handler.snapshots([1]))[0]
+        self.assertEqual((await self.run_group(False, await self.previewed()))["action"], "merged")
+        self.assertEqual((await self.handler.snapshots([1]))[0], before)
+        archive = await self.db.get(Archive, 2)
+        self.assertEqual(archive.snapshot["removed"]["service"]["cover_image_path"], "business-covers/2/example.jpg")
+        self.assertEqual(len(archive.snapshot["removed"]["contacts"]), 2)
+
+    async def test_old_field_combining_preview_is_rejected(self):
+        from app.modules.admin.service_management.services.duplicates import fingerprint
+        records = await self.handler.snapshots([1, 2])
+        old_token = fingerprint({"keep_id": 1, "records": records})
+        result = await self.run_group(False, group(preview_token=old_token))
+        self.assertEqual(result["action"], "error")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(Archive)), 0)
 
     async def test_changed_contact_after_preview_blocks_entire_group(self):
         payload = await self.previewed()
